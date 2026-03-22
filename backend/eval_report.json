@@ -1,75 +1,75 @@
 {
-  "run_timestamp": "2026-03-22T06:00:01.877588Z",
+  "run_timestamp": "2026-03-22T06:08:59.696320Z",
   "model": "MOCK",
   "total_examples": 50,
-  "passed": 46,
-  "failed": 4,
-  "pass_rate": 0.92,
+  "passed": 48,
+  "failed": 2,
+  "pass_rate": 0.96,
   "avg_scores": {
     "syntax": 1.0,
-    "code": 0.918,
-    "ncci": 0.868,
-    "financial": 0.94,
-    "composite": 0.916
+    "code": 0.876,
+    "ncci": 0.904,
+    "financial": 0.93,
+    "composite": 0.912
   },
   "niche_summary": {
     "MSK_Forensics": {
       "pass_rate": 1.0,
-      "avg_composite": 0.985,
+      "avg_composite": 0.943,
       "passed": 5,
       "total": 5
     },
     "Oncology_Billing": {
       "pass_rate": 1.0,
-      "avg_composite": 0.844,
+      "avg_composite": 0.958,
       "passed": 5,
       "total": 5
     },
     "Evaluation_Management": {
       "pass_rate": 0.8,
-      "avg_composite": 0.832,
+      "avg_composite": 0.874,
       "passed": 4,
       "total": 5
     },
     "Radiology_Forensics": {
-      "pass_rate": 0.8,
+      "pass_rate": 1.0,
       "avg_composite": 0.916,
-      "passed": 4,
+      "passed": 5,
       "total": 5
     },
     "Cardiology_Forensics": {
       "pass_rate": 1.0,
-      "avg_composite": 0.901,
+      "avg_composite": 0.928,
       "passed": 5,
       "total": 5
     },
     "Anesthesia_Billing": {
       "pass_rate": 1.0,
-      "avg_composite": 0.985,
+      "avg_composite": 0.943,
       "passed": 5,
       "total": 5
     },
     "Urology_Forensics": {
-      "pass_rate": 1.0,
-      "avg_composite": 0.916,
-      "passed": 5,
+      "pass_rate": 0.8,
+      "avg_composite": 0.874,
+      "passed": 4,
       "total": 5
     },
     "HomeHealth_Upcoding": {
-      "pass_rate": 0.8,
-      "avg_composite": 0.901,
-      "passed": 4,
+      "pass_rate": 1.0,
+      "avg_composite": 0.943,
+      "passed": 5,
       "total": 5
     },
     "DME_Unbundling": {
-      "pass_rate": 0.8,
-      "avg_composite": 0.902,
-      "passed": 4,
+      "pass_rate": 1.0,
+      "avg_composite": 0.887,
+      "passed": 5,
       "total": 5
     },
     "BehavioralHealth_EM": {
       "pass_rate": 1.0,
-      "avg_composite": 0.979,
+      "avg_composite": 0.859,
       "passed": 5,
       "total": 5
     }
@@ -85,22 +85,22 @@
     {
       "eval_id": "eval_msk_001",
       "niche": "MSK_Forensics",
-      "timestamp": "2026-03-22T06:00:01.875283Z",
+      "timestamp": "2026-03-22T06:08:59.692920Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 1.0,
-        "financial": 0.5,
-        "composite": 0.925
+        "ncci": 0.4,
+        "financial": 1.0,
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [],
-        "financial": [
-          "Financial exposure off by 23.5%: expected $1250.00, got $955.63"
-        ]
+        "ncci": [
+          "NCCI edit type mismatch: expected 'comprehensive_component', got 'mutually_exclusive'"
+        ],
+        "financial": []
       },
       "gold": {
         "icd10_primary": "M17.11",
@@ -122,9 +122,9 @@
         "billing_flags": [
           "CPT 27370 bundled into 27447 per NCCI Column 2 edit \u2014 unbundling violation"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "mutually_exclusive",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 955.63
+        "estimated_financial_exposure": 1001.61
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -132,7 +132,7 @@
     {
       "eval_id": "eval_msk_002",
       "niche": "MSK_Forensics",
-      "timestamp": "2026-03-22T06:00:01.875354Z",
+      "timestamp": "2026-03-22T06:08:59.693015Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -169,7 +169,7 @@
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 1130.67
+        "estimated_financial_exposure": 980.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -177,20 +177,22 @@
     {
       "eval_id": "eval_msk_003",
       "niche": "MSK_Forensics",
-      "timestamp": "2026-03-22T06:00:01.875402Z",
+      "timestamp": "2026-03-22T06:08:59.693093Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
         "ncci": 1.0,
-        "financial": 1.0,
-        "composite": 1.0
+        "financial": 0.5,
+        "composite": 0.925
       },
       "issues": {
         "syntax": [],
         "code": [],
         "ncci": [],
-        "financial": []
+        "financial": [
+          "Financial exposure off by 27.1%: expected $1100.00, got $801.93"
+        ]
       },
       "gold": {
         "icd10_primary": "S52.501A",
@@ -214,7 +216,7 @@
         ],
         "ncci_edit_type": "mutually_exclusive",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 1169.44
+        "estimated_financial_exposure": 801.93
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -222,7 +224,7 @@
     {
       "eval_id": "eval_msk_004",
       "niche": "MSK_Forensics",
-      "timestamp": "2026-03-22T06:00:01.875446Z",
+      "timestamp": "2026-03-22T06:08:59.693153Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -269,7 +271,7 @@
     {
       "eval_id": "eval_msk_005",
       "niche": "MSK_Forensics",
-      "timestamp": "2026-03-22T06:00:01.875488Z",
+      "timestamp": "2026-03-22T06:08:59.693254Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -314,24 +316,20 @@
     {
       "eval_id": "eval_onc_001",
       "niche": "Oncology_Billing",
-      "timestamp": "2026-03-22T06:00:01.875534Z",
+      "timestamp": "2026-03-22T06:08:59.693328Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
-        "financial": 0.5,
-        "composite": 0.715
+        "ncci": 1.0,
+        "financial": 1.0,
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'comprehensive_component', got 'mutually_exclusive'"
-        ],
-        "financial": [
-          "Financial exposure off by 21.6%: expected $2800.00, got $3404.75"
-        ]
+        "ncci": [],
+        "financial": []
       },
       "gold": {
         "icd10_primary": "C50.911",
@@ -359,9 +357,9 @@
         "billing_flags": [
           "CPT 96413 billed twice \u2014 second infusion should be 96417 (each additional hour); first-hour code not repeatable same day"
         ],
-        "ncci_edit_type": "mutually_exclusive",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 3404.75
+        "estimated_financial_exposure": 2800.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -369,7 +367,7 @@
     {
       "eval_id": "eval_onc_002",
       "niche": "Oncology_Billing",
-      "timestamp": "2026-03-22T06:00:01.875593Z",
+      "timestamp": "2026-03-22T06:08:59.693389Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -406,7 +404,7 @@
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 1837.18
+        "estimated_financial_exposure": 1650.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -414,21 +412,19 @@
     {
       "eval_id": "eval_onc_003",
       "niche": "Oncology_Billing",
-      "timestamp": "2026-03-22T06:00:01.875653Z",
+      "timestamp": "2026-03-22T06:08:59.693473Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.79
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'sequential_service_bundling', got 'comprehensive_component'"
-        ],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -453,7 +449,7 @@
         "billing_flags": [
           "CPT 96365 should be 96361 (additional hour hydration) when given same day as chemotherapy infusion; hydration bundled as sequential service"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "sequential_service_bundling",
         "modifier_applicable": false,
         "estimated_financial_exposure": 340.0
       },
@@ -463,22 +459,23 @@
     {
       "eval_id": "eval_onc_004",
       "niche": "Oncology_Billing",
-      "timestamp": "2026-03-22T06:00:01.875696Z",
+      "timestamp": "2026-03-22T06:08:59.693551Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
-        "financial": 0.5,
-        "composite": 0.925
+        "financial": 1.0,
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'J9355'}",
+          "Extra CPT codes (potential unbundling): {'J9356'}"
+        ],
         "ncci": [],
-        "financial": [
-          "Financial exposure off by 21.3%: expected $450.00, got $545.96"
-        ]
+        "financial": []
       },
       "gold": {
         "icd10_primary": "C50.911",
@@ -495,14 +492,14 @@
       "predicted": {
         "icd10_primary": "C50.911",
         "cpt_codes": [
-          "J9355"
+          "J9356"
         ],
         "billing_flags": [
           "J9355 unit billing requires verification \u2014 10 units at 44mg/unit = 440mg consistent with 75kg maintenance dose; verify actual vial wastage documentation"
         ],
         "ncci_edit_type": "unit_verification",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 545.96
+        "estimated_financial_exposure": 450.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -510,21 +507,19 @@
     {
       "eval_id": "eval_onc_005",
       "niche": "Oncology_Billing",
-      "timestamp": "2026-03-22T06:00:01.875733Z",
+      "timestamp": "2026-03-22T06:08:59.693601Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.79
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'same_day_em_bundling', got 'comprehensive_component'"
-        ],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -547,7 +542,7 @@
         "billing_flags": [
           "99215 bundled into 96413 on same day \u2014 E/M on chemo day requires modifier -25 and documentation of separately identifiable service beyond pre-chemo assessment"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "same_day_em_bundling",
         "modifier_applicable": true,
         "estimated_financial_exposure": 285.0
       },
@@ -557,19 +552,24 @@
     {
       "eval_id": "eval_em_001",
       "niche": "Evaluation_Management",
-      "timestamp": "2026-03-22T06:00:01.875770Z",
+      "timestamp": "2026-03-22T06:08:59.693667Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
-        "ncci": 1.0,
+        "code": 0.4,
+        "ncci": 0.4,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.58
       },
       "issues": {
         "syntax": [],
-        "code": [],
-        "ncci": [],
+        "code": [
+          "Missing CPT codes: {'99215'}",
+          "Extra CPT codes (potential unbundling): {'99216'}"
+        ],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'upcoding_flag', got 'comprehensive_component'"
+        ],
         "financial": []
       },
       "gold": {
@@ -587,36 +587,34 @@
       "predicted": {
         "icd10_primary": "E11.9",
         "cpt_codes": [
-          "99215"
+          "99216"
         ],
         "billing_flags": [
           "99215 requires high MDM or 40+ min total time \u2014 documented MDM is moderate (99214 level); potential upcoding by one level"
         ],
-        "ncci_edit_type": "upcoding_flag",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 66.55
+        "estimated_financial_exposure": 65.0
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": true
+      "passed": false
     },
     {
       "eval_id": "eval_em_002",
       "niche": "Evaluation_Management",
-      "timestamp": "2026-03-22T06:00:01.875804Z",
+      "timestamp": "2026-03-22T06:08:59.693729Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.79
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'upcoding_flag', got 'comprehensive_component'"
-        ],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -639,7 +637,7 @@
         "billing_flags": [
           "99233 requires high MDM \u2014 stable patient with copy-forward notes supports 99231 (low complexity) at most; clone documentation is a RAC audit trigger"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "upcoding_flag",
         "modifier_applicable": false,
         "estimated_financial_exposure": 320.0
       },
@@ -649,21 +647,19 @@
     {
       "eval_id": "eval_em_003",
       "niche": "Evaluation_Management",
-      "timestamp": "2026-03-22T06:00:01.875932Z",
+      "timestamp": "2026-03-22T06:08:59.693789Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.79
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'documentation_deficiency', got 'comprehensive_component'"
-        ],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -688,7 +684,7 @@
         "billing_flags": [
           "93000 global code includes tracing AND interpretation \u2014 if interpretation is documented separately it is billable; single-line note may not meet separate interpretation documentation standard"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "documentation_deficiency",
         "modifier_applicable": false,
         "estimated_financial_exposure": 45.0
       },
@@ -698,7 +694,7 @@
     {
       "eval_id": "eval_em_004",
       "niche": "Evaluation_Management",
-      "timestamp": "2026-03-22T06:00:01.875972Z",
+      "timestamp": "2026-03-22T06:08:59.693847Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -745,21 +741,18 @@
     {
       "eval_id": "eval_em_005",
       "niche": "Evaluation_Management",
-      "timestamp": "2026-03-22T06:00:01.876018Z",
+      "timestamp": "2026-03-22T06:08:59.693904Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 0.4,
+        "code": 1.0,
         "ncci": 0.4,
         "financial": 1.0,
-        "composite": 0.58
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
-        "code": [
-          "Missing CPT codes: {'99283'}",
-          "Extra CPT codes (potential unbundling): {'99284'}"
-        ],
+        "code": [],
         "ncci": [
           "NCCI edit type mismatch: expected 'upcoding_flag', got 'comprehensive_component'"
         ],
@@ -780,22 +773,22 @@
       "predicted": {
         "icd10_primary": "S93.401A",
         "cpt_codes": [
-          "99284"
+          "99283"
         ],
         "billing_flags": [
           "99285 requires high MDM or 60+ min \u2014 ankle sprain with standard workup supports 99283 (moderate complexity); potential two-level upcoding"
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 180.0
+        "estimated_financial_exposure": 165.33
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": false
+      "passed": true
     },
     {
       "eval_id": "eval_rad_001",
       "niche": "Radiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876055Z",
+      "timestamp": "2026-03-22T06:08:59.694032Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -832,7 +825,7 @@
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 85.0
+        "estimated_financial_exposure": 84.61
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -840,19 +833,21 @@
     {
       "eval_id": "eval_rad_002",
       "niche": "Radiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876139Z",
+      "timestamp": "2026-03-22T06:08:59.694089Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 1.0,
+        "ncci": 0.4,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'unbundling_violation', got 'comprehensive_component'"
+        ],
         "financial": []
       },
       "gold": {
@@ -875,7 +870,7 @@
         "billing_flags": [
           "72148 + 72149 unbundled \u2014 combined with/without contrast study must be billed as 72158; separate billing inflates reimbursement"
         ],
-        "ncci_edit_type": "unbundling_violation",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 420.0
       },
@@ -885,7 +880,7 @@
     {
       "eval_id": "eval_rad_003",
       "niche": "Radiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876202Z",
+      "timestamp": "2026-03-22T06:08:59.694145Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -922,7 +917,7 @@
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 542.26
+        "estimated_financial_exposure": 650.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -930,14 +925,14 @@
     {
       "eval_id": "eval_rad_004",
       "niche": "Radiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876252Z",
+      "timestamp": "2026-03-22T06:08:59.694244Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 0.4,
-        "ncci": 0.4,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.58
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
@@ -945,9 +940,7 @@
           "Missing CPT codes: {'36247'}",
           "Extra CPT codes (potential unbundling): {'36248'}"
         ],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'comprehensive_component', got 'mutually_exclusive'"
-        ],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -970,17 +963,17 @@
         "billing_flags": [
           "36245 and 36246 bundled into 36247 \u2014 only the highest-order selective catheterization is billable per NCCI; lower-order placements are included"
         ],
-        "ncci_edit_type": "mutually_exclusive",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 1200.0
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": false
+      "passed": true
     },
     {
       "eval_id": "eval_rad_005",
       "niche": "Radiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876286Z",
+      "timestamp": "2026-03-22T06:08:59.694307Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1025,18 +1018,21 @@
     {
       "eval_id": "eval_card_001",
       "niche": "Cardiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876319Z",
+      "timestamp": "2026-03-22T06:08:59.694372Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'93000'}",
+          "Extra CPT codes (potential unbundling): {'93001'}"
+        ],
         "ncci": [],
         "financial": []
       },
@@ -1055,7 +1051,7 @@
       "predicted": {
         "icd10_primary": "I25.10",
         "cpt_codes": [
-          "93000"
+          "93001"
         ],
         "billing_flags": [
           "CPT 93010 is a component of 93000 global \u2014 cannot bill both; 93010 bundled into 93000"
@@ -1070,23 +1066,22 @@
     {
       "eval_id": "eval_card_002",
       "niche": "Cardiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876362Z",
+      "timestamp": "2026-03-22T06:08:59.694451Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 0.4,
+        "code": 1.0,
         "ncci": 1.0,
-        "financial": 1.0,
-        "composite": 0.79
+        "financial": 0.5,
+        "composite": 0.925
       },
       "issues": {
         "syntax": [],
-        "code": [
-          "Missing CPT codes: {'93306'}",
-          "Extra CPT codes (potential unbundling): {'93307'}"
-        ],
+        "code": [],
         "ncci": [],
-        "financial": []
+        "financial": [
+          "Financial exposure off by 28.8%: expected $210.00, got $270.43"
+        ]
       },
       "gold": {
         "icd10_primary": "I34.0",
@@ -1103,14 +1098,14 @@
       "predicted": {
         "icd10_primary": "I34.0",
         "cpt_codes": [
-          "93307"
+          "93306"
         ],
         "billing_flags": [
           "CPT 93320 Doppler component bundled into 93306 \u2014 complete echo with Doppler includes the Doppler study; separate billing is unbundling"
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 210.0
+        "estimated_financial_exposure": 270.43
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1118,22 +1113,20 @@
     {
       "eval_id": "eval_card_003",
       "niche": "Cardiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876400Z",
+      "timestamp": "2026-03-22T06:08:59.694498Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
         "ncci": 1.0,
-        "financial": 0.5,
-        "composite": 0.925
+        "financial": 1.0,
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
         "ncci": [],
-        "financial": [
-          "Financial exposure off by 21.0%: expected $1850.00, got $2238.52"
-        ]
+        "financial": []
       },
       "gold": {
         "icd10_primary": "I25.110",
@@ -1157,7 +1150,7 @@
         ],
         "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 2238.52
+        "estimated_financial_exposure": 1850.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1165,22 +1158,22 @@
     {
       "eval_id": "eval_card_004",
       "niche": "Cardiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876432Z",
+      "timestamp": "2026-03-22T06:08:59.694557Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 0.4,
-        "financial": 1.0,
-        "composite": 0.79
+        "ncci": 1.0,
+        "financial": 0.5,
+        "composite": 0.925
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'comprehensive_component', got 'mutually_exclusive'"
-        ],
-        "financial": []
+        "ncci": [],
+        "financial": [
+          "Financial exposure off by 25.8%: expected $780.00, got $578.80"
+        ]
       },
       "gold": {
         "icd10_primary": "I49.9",
@@ -1202,9 +1195,9 @@
         "billing_flags": [
           "CPT 93600 bundled into 93619 \u2014 comprehensive EP study includes His bundle recording as a component"
         ],
-        "ncci_edit_type": "mutually_exclusive",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 780.0
+        "estimated_financial_exposure": 578.8
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1212,7 +1205,7 @@
     {
       "eval_id": "eval_card_005",
       "niche": "Cardiology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876464Z",
+      "timestamp": "2026-03-22T06:08:59.694609Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1257,22 +1250,20 @@
     {
       "eval_id": "eval_anes_001",
       "niche": "Anesthesia_Billing",
-      "timestamp": "2026-03-22T06:00:01.876499Z",
+      "timestamp": "2026-03-22T06:08:59.694653Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
         "ncci": 1.0,
-        "financial": 0.5,
-        "composite": 0.925
+        "financial": 1.0,
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
         "code": [],
         "ncci": [],
-        "financial": [
-          "Financial exposure off by 23.1%: expected $620.00, got $763.24"
-        ]
+        "financial": []
       },
       "gold": {
         "icd10_primary": "C50.911",
@@ -1296,7 +1287,7 @@
         ],
         "ncci_edit_type": "mutually_exclusive",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 763.24
+        "estimated_financial_exposure": 620.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1304,20 +1295,25 @@
     {
       "eval_id": "eval_anes_002",
       "niche": "Anesthesia_Billing",
-      "timestamp": "2026-03-22T06:00:01.876530Z",
+      "timestamp": "2026-03-22T06:08:59.694721Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
-        "financial": 1.0,
-        "composite": 1.0
+        "financial": 0.5,
+        "composite": 0.715
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'00630'}",
+          "Extra CPT codes (potential unbundling): {'00631'}"
+        ],
         "ncci": [],
-        "financial": []
+        "financial": [
+          "Financial exposure off by 21.2%: expected $180.00, got $141.75"
+        ]
       },
       "gold": {
         "icd10_primary": "M51.16",
@@ -1334,14 +1330,14 @@
       "predicted": {
         "icd10_primary": "M51.16",
         "cpt_codes": [
-          "00630"
+          "00631"
         ],
         "billing_flags": [
           "Time unit discrepancy \u2014 12 time units implies 60 minutes but surgeon documents 45 minutes (9 time units); 3 excess time units billed; verify anesthesia start/stop times"
         ],
         "ncci_edit_type": "time_unit_discrepancy",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 180.0
+        "estimated_financial_exposure": 141.75
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1349,7 +1345,7 @@
     {
       "eval_id": "eval_anes_003",
       "niche": "Anesthesia_Billing",
-      "timestamp": "2026-03-22T06:00:01.876565Z",
+      "timestamp": "2026-03-22T06:08:59.694773Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1396,7 +1392,7 @@
     {
       "eval_id": "eval_anes_004",
       "niche": "Anesthesia_Billing",
-      "timestamp": "2026-03-22T06:00:01.876603Z",
+      "timestamp": "2026-03-22T06:08:59.694825Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1443,7 +1439,7 @@
     {
       "eval_id": "eval_anes_005",
       "niche": "Anesthesia_Billing",
-      "timestamp": "2026-03-22T06:00:01.876689Z",
+      "timestamp": "2026-03-22T06:08:59.694875Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1480,7 +1476,7 @@
         ],
         "ncci_edit_type": "cross_billing_error",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 705.96
+        "estimated_financial_exposure": 850.0
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1488,7 +1484,7 @@
     {
       "eval_id": "eval_urol_001",
       "niche": "Urology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876728Z",
+      "timestamp": "2026-03-22T06:08:59.694936Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1536,7 +1532,7 @@
     {
       "eval_id": "eval_urol_002",
       "niche": "Urology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876762Z",
+      "timestamp": "2026-03-22T06:08:59.694982Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1581,7 +1577,7 @@
     {
       "eval_id": "eval_urol_003",
       "niche": "Urology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876792Z",
+      "timestamp": "2026-03-22T06:08:59.695027Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1626,54 +1622,7 @@
     {
       "eval_id": "eval_urol_004",
       "niche": "Urology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876825Z",
-      "elapsed_seconds": 0.0,
-      "scores": {
-        "syntax": 1.0,
-        "code": 1.0,
-        "ncci": 0.4,
-        "financial": 1.0,
-        "composite": 0.79
-      },
-      "issues": {
-        "syntax": [],
-        "code": [],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'mutually_exclusive', got 'comprehensive_component'"
-        ],
-        "financial": []
-      },
-      "gold": {
-        "icd10_primary": "N40.1",
-        "cpt_codes": [
-          "52647"
-        ],
-        "billing_flags": [
-          "CPT 52601 mutually exclusive with 52647 \u2014 cannot bill TURP and laser vaporization for same prostate surgery; operative report supports only 52647"
-        ],
-        "ncci_edit_type": "mutually_exclusive",
-        "modifier_applicable": false,
-        "estimated_financial_exposure": 3200.0
-      },
-      "predicted": {
-        "icd10_primary": "N40.1",
-        "cpt_codes": [
-          "52647"
-        ],
-        "billing_flags": [
-          "CPT 52601 mutually exclusive with 52647 \u2014 cannot bill TURP and laser vaporization for same prostate surgery; operative report supports only 52647"
-        ],
-        "ncci_edit_type": "comprehensive_component",
-        "modifier_applicable": false,
-        "estimated_financial_exposure": 3200.0
-      },
-      "reasoning_trace": "Mock reasoning trace",
-      "passed": true
-    },
-    {
-      "eval_id": "eval_urol_005",
-      "niche": "Urology_Forensics",
-      "timestamp": "2026-03-22T06:00:01.876856Z",
+      "timestamp": "2026-03-22T06:08:59.695190Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1689,6 +1638,56 @@
         "financial": []
       },
       "gold": {
+        "icd10_primary": "N40.1",
+        "cpt_codes": [
+          "52647"
+        ],
+        "billing_flags": [
+          "CPT 52601 mutually exclusive with 52647 \u2014 cannot bill TURP and laser vaporization for same prostate surgery; operative report supports only 52647"
+        ],
+        "ncci_edit_type": "mutually_exclusive",
+        "modifier_applicable": false,
+        "estimated_financial_exposure": 3200.0
+      },
+      "predicted": {
+        "icd10_primary": "N40.1",
+        "cpt_codes": [
+          "52647"
+        ],
+        "billing_flags": [
+          "CPT 52601 mutually exclusive with 52647 \u2014 cannot bill TURP and laser vaporization for same prostate surgery; operative report supports only 52647"
+        ],
+        "ncci_edit_type": "mutually_exclusive",
+        "modifier_applicable": false,
+        "estimated_financial_exposure": 3200.0
+      },
+      "reasoning_trace": "Mock reasoning trace",
+      "passed": true
+    },
+    {
+      "eval_id": "eval_urol_005",
+      "niche": "Urology_Forensics",
+      "timestamp": "2026-03-22T06:08:59.695267Z",
+      "elapsed_seconds": 0.0,
+      "scores": {
+        "syntax": 1.0,
+        "code": 0.4,
+        "ncci": 0.4,
+        "financial": 1.0,
+        "composite": 0.58
+      },
+      "issues": {
+        "syntax": [],
+        "code": [
+          "Missing CPT codes: {'52353'}",
+          "Extra CPT codes (potential unbundling): {'52354'}"
+        ],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'mutually_exclusive', got 'comprehensive_component'"
+        ],
+        "financial": []
+      },
+      "gold": {
         "icd10_primary": "N20.1",
         "cpt_codes": [
           "52353"
@@ -1703,22 +1702,22 @@
       "predicted": {
         "icd10_primary": "N20.1",
         "cpt_codes": [
-          "52353"
+          "52354"
         ],
         "billing_flags": [
           "CPT 50590 and 52353 are mutually exclusive for same stone same day \u2014 two different lithotripsy approaches for the same calculus cannot be billed together; ureteroscopic approach (52353) is the definitive procedure"
         ],
-        "ncci_edit_type": "mutually_exclusive",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 4100.0
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": true
+      "passed": false
     },
     {
       "eval_id": "eval_hh_001",
       "niche": "HomeHealth_Upcoding",
-      "timestamp": "2026-03-22T06:00:01.876929Z",
+      "timestamp": "2026-03-22T06:08:59.695334Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1732,7 +1731,7 @@
         "code": [],
         "ncci": [],
         "financial": [
-          "Financial exposure off by 29.0%: expected $1850.00, got $1312.93"
+          "Financial exposure off by 20.6%: expected $1850.00, got $1468.17"
         ]
       },
       "gold": {
@@ -1757,7 +1756,7 @@
         ],
         "ncci_edit_type": "oasis_score_manipulation",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 1312.93
+        "estimated_financial_exposure": 1468.17
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1765,7 +1764,7 @@
     {
       "eval_id": "eval_hh_002",
       "niche": "HomeHealth_Upcoding",
-      "timestamp": "2026-03-22T06:00:01.876974Z",
+      "timestamp": "2026-03-22T06:08:59.695393Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1810,19 +1809,21 @@
     {
       "eval_id": "eval_hh_003",
       "niche": "HomeHealth_Upcoding",
-      "timestamp": "2026-03-22T06:00:01.877021Z",
+      "timestamp": "2026-03-22T06:08:59.695445Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 1.0,
+        "ncci": 0.4,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'primary_diagnosis_miscoding', got 'comprehensive_component'"
+        ],
         "financial": []
       },
       "gold": {
@@ -1845,7 +1846,7 @@
         "billing_flags": [
           "Primary diagnosis miscoding \u2014 Z96.641 is a status code, not a clinical condition; active condition driving home health need must be primary; PDGM clinical group assignment affected; potential upcoding"
         ],
-        "ncci_edit_type": "primary_diagnosis_miscoding",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 980.0
       },
@@ -1855,24 +1856,19 @@
     {
       "eval_id": "eval_hh_004",
       "niche": "HomeHealth_Upcoding",
-      "timestamp": "2026-03-22T06:00:01.877074Z",
+      "timestamp": "2026-03-22T06:08:59.695497Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 0.4,
-        "ncci": 0.4,
+        "code": 1.0,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.58
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
-        "code": [
-          "Missing CPT codes: {'G0299'}",
-          "Extra CPT codes (potential unbundling): {'G0290'}"
-        ],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'medical_necessity_failure', got 'comprehensive_component'"
-        ],
+        "code": [],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -1890,22 +1886,22 @@
       "predicted": {
         "icd10_primary": "E11.9",
         "cpt_codes": [
-          "G0290"
+          "G0299"
         ],
         "billing_flags": [
           "Skilled nursing visit not medically necessary \u2014 medication reminder alone does not meet CMS skilled care criteria; visit should be downgraded to non-covered or home health aide level; potential false claim"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "medical_necessity_failure",
         "modifier_applicable": false,
         "estimated_financial_exposure": 185.0
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": false
+      "passed": true
     },
     {
       "eval_id": "eval_hh_005",
       "niche": "HomeHealth_Upcoding",
-      "timestamp": "2026-03-22T06:00:01.877108Z",
+      "timestamp": "2026-03-22T06:08:59.695582Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -1942,7 +1938,7 @@
         ],
         "ncci_edit_type": "duplicate_service",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 220.0
+        "estimated_financial_exposure": 184.2
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1950,20 +1946,25 @@
     {
       "eval_id": "eval_dme_001",
       "niche": "DME_Unbundling",
-      "timestamp": "2026-03-22T06:00:01.877139Z",
+      "timestamp": "2026-03-22T06:08:59.695640Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
-        "financial": 1.0,
-        "composite": 1.0
+        "financial": 0.5,
+        "composite": 0.715
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'K0001'}",
+          "Extra CPT codes (potential unbundling): {'K0002'}"
+        ],
         "ncci": [],
-        "financial": []
+        "financial": [
+          "Financial exposure off by 23.3%: expected $340.00, got $419.31"
+        ]
       },
       "gold": {
         "icd10_primary": "G35",
@@ -1980,14 +1981,14 @@
       "predicted": {
         "icd10_primary": "G35",
         "cpt_codes": [
-          "K0001"
+          "K0002"
         ],
         "billing_flags": [
           "E0950 and E0951 are standard wheelchair accessories bundled into K0001 \u2014 cannot bill standard components separately; unbundling violation per CMS DME MAC policy"
         ],
         "ncci_edit_type": "dme_component_unbundling",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 340.0
+        "estimated_financial_exposure": 419.31
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -1995,19 +1996,21 @@
     {
       "eval_id": "eval_dme_002",
       "niche": "DME_Unbundling",
-      "timestamp": "2026-03-22T06:00:01.877197Z",
+      "timestamp": "2026-03-22T06:08:59.695696Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 1.0,
+        "ncci": 0.4,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'dme_component_unbundling', got 'comprehensive_component'"
+        ],
         "financial": []
       },
       "gold": {
@@ -2030,7 +2033,7 @@
         "billing_flags": [
           "E2310 and E2311 are standard components of K0835 power wheelchair \u2014 separate billing is unbundling; only upgrades or non-standard accessories are separately billable"
         ],
-        "ncci_edit_type": "dme_component_unbundling",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 1200.0
       },
@@ -2040,7 +2043,7 @@
     {
       "eval_id": "eval_dme_003",
       "niche": "DME_Unbundling",
-      "timestamp": "2026-03-22T06:00:01.877238Z",
+      "timestamp": "2026-03-22T06:08:59.695742Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -2077,7 +2080,7 @@
         ],
         "ncci_edit_type": "quantity_verification",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 280.0
+        "estimated_financial_exposure": 269.64
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -2085,7 +2088,7 @@
     {
       "eval_id": "eval_dme_004",
       "niche": "DME_Unbundling",
-      "timestamp": "2026-03-22T06:00:01.877282Z",
+      "timestamp": "2026-03-22T06:08:59.695798Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -2137,24 +2140,19 @@
     {
       "eval_id": "eval_dme_005",
       "niche": "DME_Unbundling",
-      "timestamp": "2026-03-22T06:00:01.877322Z",
+      "timestamp": "2026-03-22T06:08:59.695847Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 0.4,
-        "ncci": 0.4,
+        "code": 1.0,
+        "ncci": 1.0,
         "financial": 1.0,
-        "composite": 0.58
+        "composite": 1.0
       },
       "issues": {
         "syntax": [],
-        "code": [
-          "Missing CPT codes: {'L3000'}",
-          "Extra CPT codes (potential unbundling): {'L3001'}"
-        ],
-        "ncci": [
-          "NCCI edit type mismatch: expected 'mutually_exclusive', got 'comprehensive_component'"
-        ],
+        "code": [],
+        "ncci": [],
         "financial": []
       },
       "gold": {
@@ -2172,38 +2170,37 @@
       "predicted": {
         "icd10_primary": "M21.6X1",
         "cpt_codes": [
-          "L3001"
+          "L3000"
         ],
         "billing_flags": [
           "L3000 and L3010 are mutually exclusive for same foot same date \u2014 only one custom foot orthotic insert is billable per foot per date; L3010 is a less comprehensive version of L3000"
         ],
-        "ncci_edit_type": "comprehensive_component",
+        "ncci_edit_type": "mutually_exclusive",
         "modifier_applicable": false,
         "estimated_financial_exposure": 420.0
       },
       "reasoning_trace": "Mock reasoning trace",
-      "passed": false
+      "passed": true
     },
     {
       "eval_id": "eval_bh_001",
       "niche": "BehavioralHealth_EM",
-      "timestamp": "2026-03-22T06:00:01.877361Z",
+      "timestamp": "2026-03-22T06:08:59.695918Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 0.7,
+        "code": 1.0,
         "ncci": 1.0,
-        "financial": 1.0,
-        "composite": 0.895
+        "financial": 0.5,
+        "composite": 0.925
       },
       "issues": {
         "syntax": [],
-        "code": [
-          "Missing CPT codes: {'99214'}",
-          "Extra CPT codes (potential unbundling): {'99215'}"
-        ],
+        "code": [],
         "ncci": [],
-        "financial": []
+        "financial": [
+          "Financial exposure off by 21.9%: expected $95.00, got $74.21"
+        ]
       },
       "gold": {
         "icd10_primary": "F33.1",
@@ -2221,7 +2218,7 @@
       "predicted": {
         "icd10_primary": "F33.1",
         "cpt_codes": [
-          "99215",
+          "99214",
           "90836"
         ],
         "billing_flags": [
@@ -2229,7 +2226,7 @@
         ],
         "ncci_edit_type": "standalone_vs_addon_misuse",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 95.0
+        "estimated_financial_exposure": 74.21
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -2237,7 +2234,7 @@
     {
       "eval_id": "eval_bh_002",
       "niche": "BehavioralHealth_EM",
-      "timestamp": "2026-03-22T06:00:01.877392Z",
+      "timestamp": "2026-03-22T06:08:59.695976Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
@@ -2274,7 +2271,7 @@
         ],
         "ncci_edit_type": "add_on_criteria_not_met",
         "modifier_applicable": false,
-        "estimated_financial_exposure": 38.0
+        "estimated_financial_exposure": 37.07
       },
       "reasoning_trace": "Mock reasoning trace",
       "passed": true
@@ -2282,18 +2279,21 @@
     {
       "eval_id": "eval_bh_003",
       "niche": "BehavioralHealth_EM",
-      "timestamp": "2026-03-22T06:00:01.877479Z",
+      "timestamp": "2026-03-22T06:08:59.696033Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'90837'}",
+          "Extra CPT codes (potential unbundling): {'90838'}"
+        ],
         "ncci": [],
         "financial": []
       },
@@ -2312,7 +2312,7 @@
       "predicted": {
         "icd10_primary": "F32.0",
         "cpt_codes": [
-          "90837"
+          "90838"
         ],
         "billing_flags": [
           "E/M code 99213 not billable by LCSW under Medicare \u2014 LCSWs are limited to psychotherapy codes (90832-90838) and cannot bill E/M codes; 99213 must be removed from claim"
@@ -2327,19 +2327,21 @@
     {
       "eval_id": "eval_bh_004",
       "niche": "BehavioralHealth_EM",
-      "timestamp": "2026-03-22T06:00:01.877513Z",
+      "timestamp": "2026-03-22T06:08:59.696079Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
         "code": 1.0,
-        "ncci": 1.0,
+        "ncci": 0.4,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
         "code": [],
-        "ncci": [],
+        "ncci": [
+          "NCCI edit type mismatch: expected 'time_inconsistency', got 'comprehensive_component'"
+        ],
         "financial": []
       },
       "gold": {
@@ -2364,7 +2366,7 @@
         "billing_flags": [
           "99212 + 90838 is internally inconsistent \u2014 90838 (60-min add-on) requires a substantial E/M; 99212 (10-19 min) is too brief to support a 60-min psychotherapy add-on; total 75 min supports 99215 + 90838"
         ],
-        "ncci_edit_type": "time_inconsistency",
+        "ncci_edit_type": "comprehensive_component",
         "modifier_applicable": false,
         "estimated_financial_exposure": 185.0
       },
@@ -2374,18 +2376,21 @@
     {
       "eval_id": "eval_bh_005",
       "niche": "BehavioralHealth_EM",
-      "timestamp": "2026-03-22T06:00:01.877545Z",
+      "timestamp": "2026-03-22T06:08:59.696246Z",
       "elapsed_seconds": 0.0,
       "scores": {
         "syntax": 1.0,
-        "code": 1.0,
+        "code": 0.4,
         "ncci": 1.0,
         "financial": 1.0,
-        "composite": 1.0
+        "composite": 0.79
       },
       "issues": {
         "syntax": [],
-        "code": [],
+        "code": [
+          "Missing CPT codes: {'90853'}",
+          "Extra CPT codes (potential unbundling): {'90854'}"
+        ],
         "ncci": [],
         "financial": []
       },
@@ -2404,7 +2409,7 @@
       "predicted": {
         "icd10_primary": "F10.20",
         "cpt_codes": [
-          "90853"
+          "90854"
         ],
         "billing_flags": [
           "CPT 90837 cannot be billed same date as 90853 for same patients \u2014 individual and group therapy are mutually exclusive on the same date per CMS; the 3 patients billed for both represent duplicate billing"

@@ -18,7 +18,7 @@ import { API_BASE } from "@/lib/api";
 import {
   CheckCircle, XCircle, PlayCircle, RefreshCw, AlertTriangle,
   ChevronDown, ChevronRight, Shield, BookOpen, Zap, DollarSign,
-  FileText, Activity, BarChart3
+  FileText, Activity, BarChart3, Download
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -374,6 +374,18 @@ export default function EvalDashboard() {
                 <PlayCircle className="w-3.5 h-3.5" />
                 Live Run
               </button>
+              {report && report.status !== "no_report" && (
+                <a
+                  href={`${API_BASE}/api/eval/export/pdf`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-mono rounded hover:bg-blue-500/20 transition-colors"
+                  title="Download PDF audit report"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Report</span>
+                </a>
+              )}
             </div>
           )}
         </div>

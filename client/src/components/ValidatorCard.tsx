@@ -2,6 +2,7 @@
  * ValidatorCard — The main Tinder-style trace review card
  * Design: Forensic Terminal — dark card with amber accents, monospace trace content
  * Schema: Gold Standard v2.1 — includes ncci_citation, oig_priority, logic_trace, financial_impact gate
+ * Priority 2: Approve with Edit — inline editing of CPT codes, ICD-10, NCCI citation, financial impact
  */
 import { useState } from "react";
 import { type Trace } from "@/lib/api";
@@ -19,16 +20,30 @@ import {
   BookOpen,
   Brain,
   ShieldAlert,
+  Pencil,
+  X,
+  Plus,
+  Trash2,
+  Save,
 } from "lucide-react";
 
 interface ValidatorCardProps {
   trace: Trace;
   swipeDirection: "left" | "right" | null;
-  onApprove: () => void;
+  onApprove: (edits?: TraceEdits) => void;
   onDeny: () => void;
   onSkip: () => void;
   /** When true, hides the in-card action buttons (used on mobile where the thumb-zone bar handles actions) */
   hideActionButtons?: boolean;
+}
+
+/** Editable fields that an auditor can correct before approving */
+export interface TraceEdits {
+  cpt_codes?: string[];
+  icd10?: string;
+  ncci_citation?: string;
+  financial_impact?: number;
+  auditor_note?: string;
 }
 
 const NICHE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -114,10 +129,196 @@ function FinancialImpactGate({
   );
 }
 
+/** Inline Edit Panel — shown when auditor clicks "Approve with Edit" */
+function InlineEditPanel({
+  trace,
+  onSaveAndApprove,
+  onCancel,
+}: {
+  trace: Trace;
+  onSaveAndApprove: (edits: TraceEdits) => void;
+  onCancel: () => void;
+}) {
+  const [cptCodes, setCptCodes] = useState<string[]>([...trace.cpt_codes]);
+  const [icd10, setIcd10] = useState(trace.icd10 ?? "");
+  const [ncciCitation, setNcciCitation] = useState(trace.ncci_citation ?? "");
+  const [financialImpact, setFinancialImpact] = useState(String(trace.financial_impact ?? 0));
+  const [auditorNote, setAuditorNote] = useState("");
+  const [newCpt, setNewCpt] = useState("");
+
+  function addCpt() {
+    const code = newCpt.trim().toUpperCase();
+    if (code && !cptCodes.includes(code)) {
+      setCptCodes([...cptCodes, code]);
+      setNewCpt("");
+    }
+  }
+
+  function removeCpt(code: string) {
+    setCptCodes(cptCodes.filter((c) => c !== code));
+  }
+
+  function handleSave() {
+    const edits: TraceEdits = {};
+    if (JSON.stringify(cptCodes) !== JSON.stringify(trace.cpt_codes)) edits.cpt_codes = cptCodes;
+    if (icd10 !== (trace.icd10 ?? "")) edits.icd10 = icd10;
+    if (ncciCitation !== (trace.ncci_citation ?? "")) edits.ncci_citation = ncciCitation;
+    const fi = parseFloat(financialImpact);
+    if (!isNaN(fi) && fi !== (trace.financial_impact ?? 0)) edits.financial_impact = fi;
+    if (auditorNote.trim()) edits.auditor_note = auditorNote.trim();
+    onSaveAndApprove(edits);
+  }
+
+  return (
+    <div className="absolute inset-0 z-20 overflow-y-auto bg-background/97 backdrop-blur-sm rounded-xl">
+      <div className="p-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Pencil className="w-4 h-4 text-primary" />
+            <span className="font-mono text-sm font-bold text-primary">Approve with Edit</span>
+          </div>
+          <button
+            onClick={onCancel}
+            className="p-1 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="font-mono text-xs text-muted-foreground leading-relaxed border-l-2 border-primary/40 pl-3">
+          Correct any fields below before approving. Only changed fields are recorded as auditor edits in the Gold Standard trace.
+        </p>
+
+        {/* CPT Codes */}
+        <div>
+          <label className="font-mono text-xs text-muted-foreground uppercase tracking-wider block mb-2">
+            CPT Codes
+          </label>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {cptCodes.map((code) => (
+              <span
+                key={code}
+                className="flex items-center gap-1 font-mono text-xs font-semibold px-2 py-0.5 rounded
+                           bg-primary/10 text-primary border border-primary/30"
+              >
+                {code}
+                <button
+                  onClick={() => removeCpt(code)}
+                  className="hover:text-destructive transition-colors ml-0.5"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={newCpt}
+              onChange={(e) => setNewCpt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addCpt()}
+              placeholder="Add CPT code..."
+              className="flex-1 font-mono text-xs bg-accent/30 border border-border rounded px-2 py-1.5
+                         text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <button
+              onClick={addCpt}
+              className="px-2 py-1.5 rounded bg-primary/10 border border-primary/30 text-primary
+                         hover:bg-primary/20 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* ICD-10 */}
+        <div>
+          <label className="font-mono text-xs text-muted-foreground uppercase tracking-wider block mb-2">
+            ICD-10 Code
+          </label>
+          <input
+            value={icd10}
+            onChange={(e) => setIcd10(e.target.value.toUpperCase())}
+            placeholder="e.g. M17.11"
+            className="w-full font-mono text-xs bg-accent/30 border border-border rounded px-2 py-1.5
+                       text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
+          />
+        </div>
+
+        {/* NCCI Citation */}
+        <div>
+          <label className="font-mono text-xs text-muted-foreground uppercase tracking-wider block mb-2">
+            NCCI Citation
+          </label>
+          <textarea
+            value={ncciCitation}
+            onChange={(e) => setNcciCitation(e.target.value)}
+            rows={2}
+            placeholder="e.g. 2026 NCCI Ch. IV §E — Column 2 edit..."
+            className="w-full font-mono text-xs bg-accent/30 border border-border rounded px-2 py-1.5
+                       text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50
+                       resize-none leading-relaxed"
+          />
+        </div>
+
+        {/* Financial Impact */}
+        <div>
+          <label className="font-mono text-xs text-muted-foreground uppercase tracking-wider block mb-2">
+            Financial Impact ($)
+          </label>
+          <input
+            type="number"
+            value={financialImpact}
+            onChange={(e) => setFinancialImpact(e.target.value)}
+            placeholder="0.00"
+            className="w-full font-mono text-xs bg-accent/30 border border-border rounded px-2 py-1.5
+                       text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50"
+          />
+        </div>
+
+        {/* Auditor Note */}
+        <div>
+          <label className="font-mono text-xs text-muted-foreground uppercase tracking-wider block mb-2">
+            Auditor Note <span className="normal-case text-muted-foreground/60">(optional)</span>
+          </label>
+          <textarea
+            value={auditorNote}
+            onChange={(e) => setAuditorNote(e.target.value)}
+            rows={2}
+            placeholder="Reason for correction..."
+            className="w-full font-mono text-xs bg-accent/30 border border-border rounded px-2 py-1.5
+                       text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50
+                       resize-none leading-relaxed"
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <Button
+            onClick={onCancel}
+            variant="outline"
+            className="flex-1 font-mono text-xs border-border text-muted-foreground hover:bg-accent/50"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            className="flex-1 font-mono text-xs bg-emerald-600 hover:bg-emerald-500 text-white border-0"
+          >
+            <Save className="w-3.5 h-3.5 mr-1.5" />
+            Save & Approve
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip, hideActionButtons = false }: ValidatorCardProps) {
   const [showFullCot, setShowFullCot] = useState(false);
   const [showLogicTrace, setShowLogicTrace] = useState(false);
   const [showImpactGate, setShowImpactGate] = useState(false);
+  const [showEditPanel, setShowEditPanel] = useState(false);
 
   const nicheStyle = NICHE_STYLES[trace.niche] || { bg: "bg-accent/30", text: "text-foreground", border: "border-border" };
   const isPositiveImpact = (trace.financial_impact ?? 0) > 0;
@@ -131,12 +332,15 @@ export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip
     : "card-enter";
 
   function handleApproveClick() {
-    // Financial impact gate: warn if $0 or very low value
     if (isNeutral || isLowValue) {
       setShowImpactGate(true);
     } else {
       onApprove();
     }
+  }
+
+  function handleApproveWithEdit() {
+    setShowEditPanel(true);
   }
 
   // Parse logic_trace: strip <think> tags for display
@@ -159,6 +363,15 @@ export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip
           impact={trace.financial_impact ?? 0}
           onConfirm={() => { setShowImpactGate(false); onApprove(); }}
           onCancel={() => setShowImpactGate(false)}
+        />
+      )}
+
+      {/* Approve with Edit Panel */}
+      {showEditPanel && (
+        <InlineEditPanel
+          trace={trace}
+          onSaveAndApprove={(edits) => { setShowEditPanel(false); onApprove(edits); }}
+          onCancel={() => setShowEditPanel(false)}
         />
       )}
 
@@ -368,28 +581,41 @@ export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip
       </div>
 
       {/* Action Buttons — hidden on mobile (thumb-zone bar handles it) */}
-      <div className={`px-5 py-4 flex items-center gap-3 ${hideActionButtons ? "hidden md:flex" : "flex"}`}>
+      <div className={`px-5 py-4 flex flex-col gap-2 ${hideActionButtons ? "hidden md:flex" : "flex"}`}>
+        {/* Primary row: Deny | Skip | Approve */}
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={onDeny}
+            variant="outline"
+            className="flex-1 font-mono text-sm border-destructive/40 text-destructive hover:bg-destructive/10 hover:border-destructive/70 glow-deny transition-all"
+          >
+            <XCircle className="w-4 h-4 mr-2" />
+            Deny
+          </Button>
+          <Button
+            onClick={onSkip}
+            variant="outline"
+            className="font-mono text-sm px-4 border-border text-muted-foreground hover:bg-accent/50"
+          >
+            <SkipForward className="w-4 h-4" />
+          </Button>
+          <Button
+            onClick={handleApproveClick}
+            className="flex-1 font-mono text-sm bg-emerald-600 hover:bg-emerald-500 text-white border-0 glow-valid transition-all"
+          >
+            <CheckCircle2 className="w-4 h-4 mr-2" />
+            Approve
+          </Button>
+        </div>
+        {/* Secondary row: Approve with Edit */}
         <Button
-          onClick={onDeny}
+          onClick={handleApproveWithEdit}
           variant="outline"
-          className="flex-1 font-mono text-sm border-destructive/40 text-destructive hover:bg-destructive/10 hover:border-destructive/70 glow-deny transition-all"
+          className="w-full font-mono text-xs border-primary/30 text-primary/80 hover:bg-primary/10 hover:border-primary/60 hover:text-primary transition-all"
         >
-          <XCircle className="w-4 h-4 mr-2" />
-          Deny
-        </Button>
-        <Button
-          onClick={onSkip}
-          variant="outline"
-          className="font-mono text-sm px-4 border-border text-muted-foreground hover:bg-accent/50"
-        >
-          <SkipForward className="w-4 h-4" />
-        </Button>
-        <Button
-          onClick={handleApproveClick}
-          className="flex-1 font-mono text-sm bg-emerald-600 hover:bg-emerald-500 text-white border-0 glow-valid transition-all"
-        >
-          <CheckCircle2 className="w-4 h-4 mr-2" />
-          Approve
+          <Pencil className="w-3.5 h-3.5 mr-2" />
+          Approve with Edit
+          <span className="ml-2 text-muted-foreground/60 text-[10px]">— correct CPT / ICD-10 / NCCI before approving</span>
         </Button>
       </div>
     </div>

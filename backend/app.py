@@ -1537,6 +1537,148 @@ def get_gold_standard_examples():
     return jsonify({"examples": slim, "total": len(slim)})
 
 
+@app.route("/api/eval/export/pdf", methods=["GET"])
+def export_eval_pdf():
+    """Generate and return a PDF audit report of the latest eval run."""
+    from io import BytesIO
+    import datetime as _dt
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.enums import TA_CENTER
+    from flask import send_file
+
+    from eval_harness import get_latest_report as _get_report
+    report = _get_report()
+    if not report or report.get("total_examples", 0) == 0:
+        return jsonify({"error": "No eval report available. Run an eval first."}), 404
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            leftMargin=0.75*inch, rightMargin=0.75*inch,
+                            topMargin=0.75*inch, bottomMargin=0.75*inch)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("LRTitle", parent=styles["Heading1"],
+                                  fontSize=16, textColor=colors.HexColor("#1e3a5f"), spaceAfter=4)
+    subtitle_style = ParagraphStyle("LRSubtitle", parent=styles["Normal"],
+                                     fontSize=9, textColor=colors.HexColor("#6b7280"), spaceAfter=12)
+    section_style = ParagraphStyle("LRSection", parent=styles["Heading2"],
+                                    fontSize=11, textColor=colors.HexColor("#1e3a5f"),
+                                    spaceBefore=14, spaceAfter=6)
+    footer_style = ParagraphStyle("LRFooter", parent=styles["Normal"],
+                                   fontSize=7, textColor=colors.HexColor("#9ca3af"), alignment=TA_CENTER)
+
+    story = []
+    story.append(Paragraph("Logic Refinery \u2014 Eval Harness Audit Report", title_style))
+    run_at = report.get("run_at", "Unknown")
+    story.append(Paragraph(
+        f"Generated: {_dt.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}  |  "
+        f"Eval Run: {run_at}  |  Schema: Gold Standard v2.1",
+        subtitle_style
+    ))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1e3a5f"), spaceAfter=12))
+
+    # Summary
+    story.append(Paragraph("Executive Summary", section_style))
+    composite = report.get("composite_score", 0)
+    pass_rate = report.get("pass_rate", 0)
+    passed = report.get("passed", 0)
+    failed = report.get("failed", 0)
+    total = report.get("total_examples", 0)
+    avg = report.get("avg_scores", {})
+    verdict = "PASS" if composite >= 92 else ("WARN" if composite >= 85 else "FAIL")
+    summary_data = [
+        ["Metric", "Value", "Threshold", "Status"],
+        ["Composite Score", f"{composite:.1f}%", "\u2265 92% (target)", verdict],
+        ["Pass Rate", f"{pass_rate:.1f}%", "\u2265 85% (floor)", "OK" if pass_rate >= 85 else "FAIL"],
+        ["Passed / Total", f"{passed} / {total}", "\u2014", "\u2014"],
+        ["Failed", str(failed), "\u2014", "\u2014"],
+    ]
+    for dim, score in avg.items():
+        summary_data.append([f"  {dim.replace('_', ' ').title()}", f"{score:.1f}%", "\u2265 85%",
+                              "OK" if score >= 85 else "FAIL"])
+    tbl = Table(summary_data, colWidths=[2.5*inch, 1.2*inch, 1.5*inch, 1.0*inch])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1e3a5f")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("FONTNAME", (0,1), (-1,-1), "Courier"),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+        ("ALIGN", (1,0), (-1,-1), "CENTER"),
+        ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1, 12))
+
+    # Niche breakdown
+    niche_summary = report.get("niche_summary", {})
+    if niche_summary:
+        story.append(Paragraph("Niche-Level Breakdown", section_style))
+        nd = [["Niche", "Passed", "Total", "Pass Rate", "Avg Score"]]
+        for niche, ns in niche_summary.items():
+            nd.append([niche.replace("_"," "), str(ns.get("passed",0)), str(ns.get("total",0)),
+                       f"{ns.get('pass_rate',0):.0f}%", f"{ns.get('avg_composite',0):.1f}%"])
+        nt = Table(nd, colWidths=[2.2*inch, 0.8*inch, 0.7*inch, 1.0*inch, 1.0*inch])
+        nt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#374151")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE", (0,0), (-1,-1), 8), ("FONTNAME", (0,1), (-1,-1), "Courier"),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+            ("ALIGN", (1,0), (-1,-1), "CENTER"),
+            ("TOPPADDING", (0,0), (-1,-1), 4), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ]))
+        story.append(nt)
+        story.append(Spacer(1, 12))
+
+    # Individual results
+    results = report.get("results", [])
+    if results:
+        story.append(Paragraph("Individual Test Results", section_style))
+        rd = [["Eval ID", "Niche", "Composite", "Syntax", "Codes", "NCCI", "Fin.", "Status"]]
+        for r in results[:50]:
+            sc = r.get("scores", {})
+            rd.append([
+                r.get("eval_id","")[-12:],
+                r.get("niche","").replace("_"," ")[:18],
+                f"{r.get('composite_score',0):.0f}%",
+                f"{sc.get('syntax_validity',0):.0f}%",
+                f"{sc.get('code_accuracy',0):.0f}%",
+                f"{sc.get('ncci_correctness',0):.0f}%",
+                f"{sc.get('financial_exposure',0):.0f}%",
+                "PASS" if r.get("passed") else "FAIL",
+            ])
+        rt = Table(rd, colWidths=[1.0*inch,1.5*inch,0.7*inch,0.6*inch,0.6*inch,0.6*inch,0.5*inch,0.6*inch])
+        rt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#374151")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE", (0,0), (-1,-1), 7), ("FONTNAME", (0,1), (-1,-1), "Courier"),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.HexColor("#f9fafb"), colors.white]),
+            ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+            ("ALIGN", (2,0), (-1,-1), "CENTER"),
+            ("TOPPADDING", (0,0), (-1,-1), 3), ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ]))
+        story.append(rt)
+
+    story.append(Spacer(1, 16))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#9ca3af"), spaceAfter=6))
+    story.append(Paragraph(
+        "Logic Refinery \u2014 Gold Standard v2.1 | Bittensor Subnet Compliance | "
+        "CMS NCCI 2026 | AZ HB 2175 | TX SB 1188",
+        footer_style
+    ))
+    doc.build(story)
+    buf.seek(0)
+    fname = f"logic_refinery_eval_{_dt.datetime.utcnow().strftime('%Y%m%d_%H%M')}.pdf"
+    return send_file(buf, mimetype="application/pdf", as_attachment=True, download_name=fname)
+
+
 if __name__ == "__main__":
     # Seed the load balancer with sample jobs on startup
     from claim_mapper import SAMPLE_BILLS

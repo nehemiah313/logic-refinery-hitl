@@ -110,3 +110,14 @@ temp/
 
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
+client/public/__manus__/
+
+# Backend runtime data (regenerated on startup — do not commit)
+backend/vault.jsonl
+backend/claim_maps.jsonl
+backend/eval_results.jsonl
+backend/eval_report.json
+backend/gold_standard.jsonl
+backend/throughput_log.jsonl
+backend/nodes.json
+

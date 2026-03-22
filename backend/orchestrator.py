@@ -48,25 +48,37 @@ JOB_SPECS = [
         "niche": "Oncology_Billing",
         "cpt_codes": ["96413", "96415", "96415", "96415"],
         "icd10": "C50.912",
-        "scenario": "Chemotherapy infusion — MUE unit validation",
+        "scenario": "Chemotherapy infusion — MUE unit validation (4-hour Pertuzumab infusion)",
         "prompt_template": (
             "You are a medical billing AI auditor. A claim was submitted for a 62-year-old female "
-            "with Stage III breast cancer (ICD-10 C50.912). "
-            "CPT 96413 (initial chemo hour) and CPT 96415 x3 (additional hours) were billed. "
-            "Drug: J9355 (Trastuzumab). Total infusion time: 4 hours. "
-            "Validate against CMS MUE limits. Provide chain_of_thought array and final_decision string."
+            "with Stage III HER2-positive left breast cancer (ICD-10 C50.912). "
+            "CPT 96413 (initial chemotherapy infusion, first hour) and CPT 96415 x3 "
+            "(additional infusion hours, each >30 min beyond first hour) were billed. "
+            "Drug administered: J9306 (Pertuzumab/Perjeta, 840mg IV). Total infusion time: 4 hours. "
+            "CMS MUE for CPT 96415 is 6 units per day. "
+            "Validate the submitted units against CMS MUE limits. Determine if the claim is payable "
+            "as submitted or if a unit reduction is required. "
+            "Provide chain_of_thought array and final_decision string."
         ),
     },
     {
         "niche": "Evaluation_Management",
         "cpt_codes": ["99215", "99213"],
-        "icd10": "Z00.00",
-        "scenario": "Dual E/M codes same-day same-provider — upcoding audit",
+        "icd10": "E11.9",
+        "scenario": "Dual E/M codes same-day same-provider — duplicate billing audit",
         "prompt_template": (
-            "You are a medical billing AI auditor. A provider billed CPT 99215 and CPT 99213 "
-            "on the same date of service for the same patient (ICD-10 Z00.00). "
-            "Only one encounter note exists in the medical record. "
-            "Analyze for duplicate billing. Provide chain_of_thought array and final_decision string."
+            "You are a medical billing AI auditor. A provider billed CPT 99215 (Level 5 "
+            "established patient office visit, high medical decision complexity) and CPT 99213 "
+            "(Level 3 established patient office visit, low medical decision complexity) "
+            "on the same date of service for the same patient with Type 2 diabetes mellitus "
+            "(ICD-10 E11.9). Only one encounter note exists in the medical record. "
+            "No modifier 25 or documentation of a separate, distinct encounter is present. "
+            "Per CMS Claims Processing Manual Chapter 12 §30.6.7, only one E/M service "
+            "may be billed per provider per date of service for the same patient unless "
+            "a separate and distinct encounter is documented with modifier 25. "
+            "Analyze for duplicate billing. Identify which code should be denied and calculate "
+            "the financial impact of the denial. "
+            "Provide chain_of_thought array and final_decision string."
         ),
     },
     {
@@ -97,12 +109,21 @@ JOB_SPECS = [
         "niche": "Anesthesia_Billing",
         "cpt_codes": ["00400", "00402"],
         "icd10": "Z42.1",
-        "scenario": "Dual anesthesia codes — general vs. specific site conflict",
+        "scenario": "Dual anesthesia codes — catch-all vs. site-specific mutual exclusivity",
         "prompt_template": (
-            "You are a medical billing AI auditor. An anesthesia claim includes CPT 00400 "
-            "(integumentary system/extremities) and CPT 00402 (breast reconstruction) "
-            "on the same date. Operative report confirms breast reconstruction only. "
-            "Analyze NCCI mutual exclusivity. Provide chain_of_thought array and final_decision string."
+            "You are a medical billing AI auditor. An anesthesia claim includes both CPT 00400 "
+            "(Anesthesia for procedures on the integumentary system, extremities, anterior trunk "
+            "and perineum — a catch-all code) and CPT 00402 (Anesthesia for reconstructive "
+            "procedures of the breast, e.g., reduction or augmentation mammoplasty, muscle flaps) "
+            "on the same date of service. The patient's diagnosis is ICD-10 Z42.1 (Encounter for "
+            "breast reconstruction following mastectomy). The operative report confirms a single "
+            "procedure: left breast reconstruction with TRAM flap. No second surgical site is "
+            "documented. Per 2026 NCCI Chapter II, anesthesia codes are mutually exclusive for "
+            "the same surgical encounter — only the most specific applicable code may be billed. "
+            "CPT 00400 was billed erroneously as a catch-all; CPT 00402 is the correct "
+            "site-specific anesthesia code for breast reconstruction. "
+            "Analyze NCCI mutual exclusivity, identify the correct payable code, and determine "
+            "which code should be denied. Provide chain_of_thought array and final_decision string."
         ),
     },
     {

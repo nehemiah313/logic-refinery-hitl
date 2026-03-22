@@ -4,7 +4,7 @@
  * In production, this would be proxied through the same origin.
  */
 
-const API_BASE = "http://localhost:5001/api";
+export const API_BASE = "http://localhost:5001";
 
 export interface Trace {
   trace_id: string;
@@ -58,8 +58,10 @@ export interface VerifyPayload {
   notes?: string;
 }
 
+const API_PATH = `${API_BASE}/api`;
+
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_PATH}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -99,7 +101,7 @@ export const api = {
 
   /** Download Gold Standard JSONL */
   downloadGoldJSONL: () => {
-    window.open(`${API_BASE}/export/jsonl`, "_blank");
+    window.open(`${API_PATH}/export/jsonl`, "_blank");
   },
 
   /** Get export manifest */

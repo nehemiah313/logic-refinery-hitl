@@ -3,9 +3,9 @@
  * Design: Forensic Terminal × Native Mobile — frosted glass pill tabs
  * Tabs: Validator (HITL) | Cluster Monitor | Load Balancer | Stats & Export
  */
-import { ShieldCheck, Network, BarChart3, Scale } from "lucide-react";
+import { ShieldCheck, Network, BarChart3, Scale, Activity } from "lucide-react";
 
-export type ActiveTab = "validator" | "cluster" | "balancer" | "stats";
+export type ActiveTab = "validator" | "cluster" | "balancer" | "stats" | "eval";
 
 interface BottomNavProps {
   activeTab: ActiveTab;
@@ -22,6 +22,7 @@ const TABS: {
   { id: "cluster",   label: "Cluster",  Icon: Network },
   { id: "balancer",  label: "Balancer", Icon: Scale },
   { id: "stats",     label: "Stats",    Icon: BarChart3 },
+  { id: "eval",      label: "Eval",     Icon: Activity },
 ];
 
 export function BottomNav({ activeTab, onTabChange, queueRemaining }: BottomNavProps) {

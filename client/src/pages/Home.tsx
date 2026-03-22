@@ -14,6 +14,7 @@ import { StatsPanel } from "@/components/StatsPanel";
 import { EmptyQueue } from "@/components/EmptyQueue";
 import { NodeMonitor } from "@/components/NodeMonitor";
 import LoadBalancerPanel from "@/components/LoadBalancerPanel";
+import EvalDashboard from "@/components/EvalDashboard";
 import { MobileHeader } from "@/components/MobileHeader";
 import { BottomNav, type ActiveTab } from "@/components/BottomNav";
 import { MobileStatsSheet } from "@/components/MobileStatsSheet";
@@ -25,6 +26,7 @@ import {
   XCircle,
   SkipForward,
   Scale,
+  Activity,
 } from "lucide-react";
 
 // ActiveTab is imported from BottomNav to keep a single source of truth
@@ -206,6 +208,20 @@ export default function Home() {
               Scout / Refiner
             </span>
           </button>
+          <button
+            onClick={() => setActiveTab("eval")}
+            className={`flex items-center gap-2 px-5 py-2.5 font-mono text-xs transition-all border-b-2 ${
+              activeTab === "eval"
+                ? "border-green-500 text-green-400 bg-green-500/5"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            Eval Harness
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 font-bold text-xs">
+              50 gold
+            </span>
+          </button>
         </div>
 
         {/* ── TAB CONTENT ── */}
@@ -327,6 +343,12 @@ export default function Home() {
         {activeTab === "balancer" && (
           <div className="flex-1 overflow-y-auto">
             <LoadBalancerPanel />
+          </div>
+        )}
+
+        {activeTab === "eval" && (
+          <div className="flex-1 overflow-hidden">
+            <EvalDashboard />
           </div>
         )}
 

@@ -1437,6 +1437,106 @@ def lb_daily_stats():
     })
 
 
+# ─── Eval Harness API ─────────────────────────────────────────────────────────
+from eval_harness import (
+    run_eval_suite, get_latest_report, get_gold_examples,
+    RESULTS_FILE, REPORT_FILE
+)
+import threading as _eval_threading
+
+_eval_lock = _eval_threading.Lock()
+_eval_running = False
+
+
+@app.route("/api/eval/report", methods=["GET"])
+def get_eval_report():
+    """Return the latest eval report summary."""
+    report = get_latest_report()
+    if report is None:
+        return jsonify({
+            "status": "no_report",
+            "message": "No eval has been run yet. POST /api/eval/run to start.",
+            "total_examples": 50,
+            "passed": 0,
+            "pass_rate": 0,
+            "avg_scores": {"syntax": 0, "code": 0, "ncci": 0, "financial": 0, "composite": 0},
+            "niche_summary": {},
+        })
+    summary = {k: v for k, v in report.items() if k != "results"}
+    summary["status"] = "complete"
+    return jsonify(summary)
+
+
+@app.route("/api/eval/results", methods=["GET"])
+def get_eval_results():
+    """Return per-example eval results, optionally filtered by niche."""
+    niche = request.args.get("niche")
+    if not RESULTS_FILE.exists():
+        return jsonify({"results": [], "message": "No eval results yet."})
+    results = []
+    with open(RESULTS_FILE) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            if niche and r.get("niche") != niche:
+                continue
+            results.append(r)
+    return jsonify({"results": results, "total": len(results)})
+
+
+@app.route("/api/eval/run", methods=["POST"])
+def trigger_eval_run():
+    """Trigger a background eval run."""
+    global _eval_running
+    data = request.get_json(silent=True) or {}
+    use_mock = data.get("mock", True)
+    niche = data.get("niche")
+    with _eval_lock:
+        if _eval_running:
+            return jsonify({"status": "already_running", "message": "Eval already in progress."}), 409
+        _eval_running = True
+
+    def _run():
+        global _eval_running
+        try:
+            run_eval_suite(niche_filter=niche, use_mock=use_mock, verbose=False)
+        finally:
+            with _eval_lock:
+                _eval_running = False
+
+    _eval_threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started", "mock": use_mock, "niche": niche,
+                    "message": "Eval running. Poll /api/eval/report for results."})
+
+
+@app.route("/api/eval/status", methods=["GET"])
+def get_eval_status():
+    return jsonify({"running": _eval_running})
+
+
+@app.route("/api/eval/gold", methods=["GET"])
+def get_gold_standard_examples():
+    """Return gold standard examples for the UI."""
+    niche = request.args.get("niche")
+    examples = get_gold_examples(niche=niche)
+    slim = []
+    for ex in examples:
+        slim.append({
+            "eval_id": ex["eval_id"],
+            "niche": ex["niche"],
+            "scenario_preview": ex["scenario"][:120] + "...",
+            "gold_cpt_codes": ex["gold"]["cpt_codes"],
+            "gold_icd10": ex["gold"]["icd10_primary"],
+            "gold_ncci_edit_type": ex["gold"]["ncci_edit_type"],
+            "gold_financial_exposure": ex["gold"]["estimated_financial_exposure"],
+            "ncci_citation": ex.get("ncci_citation", ""),
+            "oig_priority": ex.get("oig_priority", False),
+        })
+    return jsonify({"examples": slim, "total": len(slim)})
+
+
 if __name__ == "__main__":
     # Seed the load balancer with sample jobs on startup
     from claim_mapper import SAMPLE_BILLS

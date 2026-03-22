@@ -95,6 +95,18 @@ interface ClaimMap {
   generated_at: string;
 }
 
+interface DailyStats {
+  daily_goal: number;
+  gold_verified_today: number;
+  refiner_completions_today: number;
+  total_today: number;
+  percentage: number;
+  status: string;
+  color: string;
+  regulatory_note: string;
+  bittensor_note: string;
+}
+
 interface TierDetectResult {
   tier: string;
   confidence: string;
@@ -108,6 +120,25 @@ interface TierDetectResult {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const ALL_NICHES = [
+  "MSK_Forensics", "Oncology_Billing", "Evaluation_Management",
+  "Radiology_Forensics", "Cardiology_Forensics", "Anesthesia_Billing",
+  "Urology_Forensics", "Home_Health_Upcoding", "DME_Forensics", "Behavioral_Health",
+];
+
+const NICHE_SHORT: Record<string, string> = {
+  MSK_Forensics: "MSK",
+  Oncology_Billing: "Onco",
+  Evaluation_Management: "E/M",
+  Radiology_Forensics: "Rad",
+  Cardiology_Forensics: "Card",
+  Anesthesia_Billing: "Anes",
+  Urology_Forensics: "Urol",
+  Home_Health_Upcoding: "HH",
+  DME_Forensics: "DME",
+  Behavioral_Health: "BH",
+};
 
 const NICHE_COLORS: Record<string, string> = {
   MSK_Forensics: "text-blue-400",
@@ -139,6 +170,69 @@ function timeAgo(iso: string) {
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   return `${Math.floor(mins / 60)}h ago`;
+}
+
+// ─── Daily Goal Tracker ──────────────────────────────────────────────────────
+
+function DailyGoalTracker({ stats }: { stats: DailyStats | null }) {
+  if (!stats) return null;
+  const pct = stats.percentage;
+  const barColor = pct >= 66 ? "bg-emerald-500" : pct >= 33 ? "bg-amber-500" : "bg-red-500";
+  const textColor = pct >= 66 ? "text-emerald-400" : pct >= 33 ? "text-amber-400" : "text-red-400";
+  const statusLabel = pct >= 100 ? "COMPLETE" : pct >= 66 ? "ON TRACK" : pct >= 33 ? "PROGRESSING" : "BEHIND";
+
+  return (
+    <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/60 border-b border-slate-700/30">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-mono font-bold text-slate-200">Daily Bittensor Target</span>
+          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+            pct >= 66 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+            : pct >= 33 ? "text-amber-400 bg-amber-500/10 border-amber-500/30"
+            : "text-red-400 bg-red-500/10 border-red-500/30"
+          }`}>{statusLabel}</span>
+        </div>
+        <div className="text-right">
+          <span className={`text-lg font-mono font-bold tabular-nums ${textColor}`}>
+            {stats.total_today.toLocaleString()}
+          </span>
+          <span className="text-[11px] text-slate-500 font-mono"> / {stats.daily_goal.toLocaleString()} traces</span>
+        </div>
+      </div>
+      <div className="px-4 py-3 bg-slate-950/40 space-y-3">
+        {/* Progress bar */}
+        <div className="relative h-3 bg-slate-800 rounded-full overflow-hidden">
+          <motion.div
+            className={`absolute left-0 top-0 h-full rounded-full ${barColor}`}
+            initial={{ width: 0 }}
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          />
+          {pct > 0 && (
+            <div
+              className="absolute top-0 h-full flex items-center px-2"
+              style={{ left: `${Math.min(pct, 90)}%` }}
+            >
+              <span className="text-[9px] font-mono font-bold text-white tabular-nums">{pct}%</span>
+            </div>
+          )}
+        </div>
+        {/* Breakdown */}
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-purple-400" />
+            <span className="text-[10px] font-mono text-slate-400">Gold Verified: <span className="text-purple-400 font-bold">{stats.gold_verified_today}</span></span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-[10px] font-mono text-slate-400">Refiner Done: <span className="text-emerald-400 font-bold">{stats.refiner_completions_today}</span></span>
+          </div>
+          <div className="ml-auto text-[9px] text-slate-600 font-mono">{stats.regulatory_note}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Pipeline Flow Diagram ────────────────────────────────────────────────────
@@ -619,27 +713,32 @@ export default function LoadBalancerPanel() {
   const [scoutJobs, setScoutJobs] = useState<QueueJob[]>([]);
   const [refinerJobs, setRefinerJobs] = useState<QueueJob[]>([]);
   const [throughput, setThroughput] = useState<ThroughputData | null>(null);
+  const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
   const [inspectMap, setInspectMap] = useState<ClaimMap | null>(null);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [promoting, setPromoting] = useState<string | null>(null);
+  const [nicheFilter, setNicheFilter] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, scoutRes, refinerRes, throughputRes] = await Promise.all([
+      const [statsRes, scoutRes, refinerRes, throughputRes, dailyRes] = await Promise.all([
         fetch(`${API}/api/lb/stats`),
-        fetch(`${API}/api/lb/queue/scout?limit=15`),
-        fetch(`${API}/api/lb/queue/refiner?limit=15`),
+        fetch(`${API}/api/lb/queue/scout?limit=30`),
+        fetch(`${API}/api/lb/queue/refiner?limit=30`),
         fetch(`${API}/api/lb/throughput?hours=24`),
+        fetch(`${API}/api/lb/daily_stats`),
       ]);
-      const [s, sq, rq, tp] = await Promise.all([
-        statsRes.json(), scoutRes.json(), refinerRes.json(), throughputRes.json(),
+      const [s, sq, rq, tp, ds] = await Promise.all([
+        statsRes.json(), scoutRes.json(), refinerRes.json(), throughputRes.json(), dailyRes.json(),
       ]);
       setStats(s);
       setScoutJobs(sq.queue || []);
       setRefinerJobs(rq.queue || []);
       setThroughput(tp);
+      setDailyStats(ds);
     } catch {
       toast.error("Cannot reach backend — is Flask running on port 5001?");
     } finally {
@@ -689,6 +788,32 @@ export default function LoadBalancerPanel() {
       setSeeding(false);
     }
   };
+
+  const handlePromote = useCallback(async (jobId: string) => {
+    setPromoting(jobId);
+    try {
+      const res = await fetch(`${API}/api/lb/promote_to_refiner`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: jobId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Promoted to Refiner — ${data.niche?.replace(/_/g, " ")} · ${fmt$(data.financial_impact || 0)} · +25% priority boost`);
+        refresh();
+      } else {
+        toast.error(data.error || "Promotion failed");
+      }
+    } catch {
+      toast.error("Promotion failed — check backend");
+    } finally {
+      setPromoting(null);
+    }
+  }, [refresh]);
+
+  // Filtered job lists
+  const filteredScout = nicheFilter ? scoutJobs.filter(j => j.niche === nicheFilter) : scoutJobs;
+  const filteredRefiner = nicheFilter ? refinerJobs.filter(j => j.niche === nicheFilter) : refinerJobs;
 
   const generateClaimMap = async () => {
     setGenerating(true);
@@ -749,6 +874,9 @@ export default function LoadBalancerPanel() {
         </div>
       </div>
 
+      {/* Daily Goal Tracker */}
+      <DailyGoalTracker stats={dailyStats} />
+
       {/* Pipeline Flow */}
       <PipelineFlow stats={stats} />
 
@@ -762,6 +890,43 @@ export default function LoadBalancerPanel() {
 
       {/* Throughput Chart */}
       <ThroughputChart data={throughput} />
+
+      {/* Niche Filter Bar */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider mr-1">Filter:</span>
+        <button
+          onClick={() => setNicheFilter(null)}
+          className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors border ${
+            nicheFilter === null
+              ? "bg-slate-200 text-slate-900 border-slate-300"
+              : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500"
+          }`}
+        >
+          All
+        </button>
+        {ALL_NICHES.map((niche) => {
+          const active = nicheFilter === niche;
+          const colorClass = NICHE_COLORS[niche] || "text-slate-400";
+          return (
+            <button
+              key={niche}
+              onClick={() => setNicheFilter(active ? null : niche)}
+              className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-colors border ${
+                active
+                  ? `${colorClass} bg-slate-800 border-current`
+                  : "bg-slate-900/60 text-slate-500 border-slate-700/50 hover:border-slate-500 hover:text-slate-300"
+              }`}
+            >
+              {NICHE_SHORT[niche] || niche}
+            </button>
+          );
+        })}
+        {nicheFilter && (
+          <span className="text-[9px] font-mono text-slate-500 ml-1">
+            Showing {filteredScout.length} Scout + {filteredRefiner.length} Refiner jobs
+          </span>
+        )}
+      </div>
 
       {/* Tier Detector */}
       <TierDetector />
@@ -780,11 +945,28 @@ export default function LoadBalancerPanel() {
             </span>
           </div>
           <div className="p-3 flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {scoutJobs.length === 0 ? (
-              <div className="text-center py-8 text-slate-600 font-mono text-xs">No Scout jobs queued</div>
+            {filteredScout.length === 0 ? (
+              <div className="text-center py-8 text-slate-600 font-mono text-xs">
+                {nicheFilter ? `No ${nicheFilter.replace(/_/g, " ")} jobs in Scout queue` : "No Scout jobs queued"}
+              </div>
             ) : (
-              scoutJobs.map((job) => (
-                <QueueRow key={job.job_id} job={job} tier="scout" onInspect={handleInspect} />
+              filteredScout.map((job) => (
+                <div key={job.job_id} className="group relative">
+                  <QueueRow job={job} tier="scout" onInspect={handleInspect} />
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handlePromote(job.job_id); }}
+                    disabled={promoting === job.job_id}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-mono text-[9px] rounded-md z-10"
+                    title="Promote to Refiner queue with +25% priority boost"
+                  >
+                    {promoting === job.job_id ? (
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                    ) : (
+                      <Zap className="w-2.5 h-2.5" />
+                    )}
+                    Promote
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -813,10 +995,12 @@ export default function LoadBalancerPanel() {
             </span>
           </div>
           <div className="p-3 flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {refinerJobs.length === 0 ? (
-              <div className="text-center py-8 text-slate-600 font-mono text-xs">No Refiner jobs queued</div>
+            {filteredRefiner.length === 0 ? (
+              <div className="text-center py-8 text-slate-600 font-mono text-xs">
+                {nicheFilter ? `No ${nicheFilter.replace(/_/g, " ")} jobs in Refiner queue` : "No Refiner jobs queued"}
+              </div>
             ) : (
-              refinerJobs.map((job) => (
+              filteredRefiner.map((job) => (
                 <QueueRow key={job.job_id} job={job} tier="refiner" onInspect={handleInspect} />
               ))
             )}

@@ -1331,6 +1331,112 @@ def lb_seed():
     })
 
 
+@app.route("/api/lb/promote_to_refiner", methods=["POST"])
+def lb_promote_to_refiner():
+    """Promote a Scout queue job to the Refiner queue with elevated priority."""
+    data = request.get_json() or {}
+    job_id = data.get("job_id", "")
+    if not job_id:
+        return jsonify({"error": "job_id required"}), 400
+
+    scout_job = None
+    with load_balancer._lock:
+        for job in load_balancer.scout_queue:
+            if job["job_id"] == job_id:
+                scout_job = dict(job)
+                break
+
+    if not scout_job:
+        return jsonify({"error": "Job not found in Scout queue"}), 404
+
+    raw_bill = scout_job.get("raw_bill") or {
+        "niche": scout_job.get("niche", "MSK_Forensics"),
+        "financial_impact": scout_job.get("financial_impact_estimate", 0),
+        "oig_priority": scout_job.get("oig_priority", False),
+    }
+    cm = generate_claim_map(raw_bill, "promoted_scout")
+    cm["promoted"] = True
+    cm["promoted_from_job"] = job_id
+    cm["financial_impact_estimate"] = max(
+        cm.get("financial_impact_estimate", 0),
+        scout_job.get("financial_impact_estimate", 0) * 1.25,
+    )
+
+    refiner_job_id = load_balancer.enqueue_refiner_job(
+        claim_map=cm,
+        ncci_citation=cm.get("ncci_citation", ""),
+        oig_priority=cm.get("oig_priority", False),
+    )
+
+    with load_balancer._lock:
+        load_balancer.scout_queue[:] = [
+            j for j in load_balancer.scout_queue if j["job_id"] != job_id
+        ]
+        load_balancer.completed_jobs.append({
+            **scout_job,
+            "status": "promoted",
+            "promoted_to": refiner_job_id,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    return jsonify({
+        "success": True,
+        "promoted_job_id": job_id,
+        "refiner_job_id": refiner_job_id,
+        "niche": scout_job.get("niche"),
+        "financial_impact": cm.get("financial_impact_estimate"),
+        "message": f"Job {job_id} promoted to Refiner queue with 25% priority boost.",
+    })
+
+
+@app.route("/api/lb/daily_stats", methods=["GET"])
+def lb_daily_stats():
+    """Daily throughput stats for the Bittensor goal tracker."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    daily_goal = 1500
+
+    gold_today = 0
+    if GOLD_PATH.exists():
+        with open(GOLD_PATH) as f:
+            for line in f:
+                try:
+                    t = json.loads(line.strip())
+                    if t.get("human_verified") and t.get("verified_at", "")[:10] == today:
+                        gold_today += 1
+                except Exception:
+                    pass
+
+    refiner_today = sum(
+        ev.get("items_produced", 1)
+        for ev in _throughput_events
+        if ev.get("tier") == "refiner" and ev.get("timestamp", "")[:10] == today
+    )
+
+    total_today = gold_today + refiner_today
+    pct = min(100.0, round((total_today / daily_goal) * 100, 1))
+
+    if pct >= 100:
+        status, color = "complete", "green"
+    elif pct >= 66:
+        status, color = "on_track", "green"
+    elif pct >= 33:
+        status, color = "progressing", "amber"
+    else:
+        status, color = "behind", "red"
+
+    return jsonify({
+        "daily_goal": daily_goal,
+        "gold_verified_today": gold_today,
+        "refiner_completions_today": refiner_today,
+        "total_today": total_today,
+        "percentage": pct,
+        "status": status,
+        "color": color,
+        "regulatory_note": "AZ HB 2175 + TX SB 1188: Human director sign-off legally required per trace.",
+        "bittensor_note": f"{total_today} / {daily_goal} traces toward Bittensor subnet daily submission.",
+    })
+
+
 if __name__ == "__main__":
     # Seed the load balancer with sample jobs on startup
     from claim_mapper import SAMPLE_BILLS

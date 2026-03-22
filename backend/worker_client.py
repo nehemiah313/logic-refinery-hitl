@@ -199,38 +199,64 @@ def process_scout_job(job: dict, node_id: str, orchestrator: str, ollama_url: st
     scenario = job.get("scenario", "")
     logger.info(f"[SCOUT] Processing job {job_id} — {niche}")
 
-    # Build a lightweight extraction prompt (not full Gold Standard reasoning)
+    # phi4-mini reasoning prompt — uses <think> chain-of-thought for Claim Map generation
+    ncci_hint = job.get('ncci_citation', '')
+    oig_flag  = "[OIG PRIORITY]" if job.get('oig_priority') else ""
     prompt = (
-        f"You are a medical billing code parser. Extract structured data from this scenario.\n\n"
-        f"SCENARIO:\n{scenario}\n\n"
-        f"Extract and return ONLY valid JSON with this exact structure:\n"
-        f'{{"icd10_primary": "...", "cpt_codes": ["...", "..."], '
-        f'"clinical_summary": "...", "billing_flags": ["..."], '
-        f'"estimated_financial_exposure": 0.00}}\n\n'
-        f"Be concise. Focus on codes and flags only."
+        f"<|system|>\n"
+        f"You are a medical billing forensic analyst specializing in CMS NCCI edits and claim adjudication. "
+        f"Your task is to parse a raw medical billing scenario into a structured Claim Map. "
+        f"Use your <think> block to reason step-by-step through the ICD-10 diagnosis, CPT procedure codes, "
+        f"NCCI bundling rules, and financial exposure before producing the final JSON output.\n"
+        f"<|end|>\n"
+        f"<|user|>\n"
+        f"BILLING SCENARIO {oig_flag}:\n{scenario}\n\n"
+        f"NCCI REFERENCE: {ncci_hint}\n\n"
+        f"Step 1 — Think through the clinical and billing logic in a <think> block.\n"
+        f"Step 2 — Output ONLY valid JSON with this exact structure after your thinking:\n"
+        f'{{\n'
+        f'  "icd10_primary": "M17.11",\n'
+        f'  "cpt_codes": ["27447", "27370"],\n'
+        f'  "clinical_summary": "one sentence",\n'
+        f'  "billing_flags": ["NCCI Column 2 edit triggered"],\n'
+        f'  "ncci_edit_type": "comprehensive_component",\n'
+        f'  "modifier_applicable": false,\n'
+        f'  "estimated_financial_exposure": 1250.00\n'
+        f'}}\n'
+        f"<|end|>\n"
+        f"<|assistant|>\n"
     )
 
     claim_map_data = None
     try:
-        raw = call_ollama(prompt, model, ollama_url, max_tokens=512)
-        # Parse the LLM extraction
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
+        raw = call_ollama(prompt, model, ollama_url, max_tokens=768)
+        # Strip phi4-mini <think>...</think> block before JSON parsing
+        import re as _re
+        think_match = _re.search(r"<think>(.*?)</think>", raw, _re.DOTALL)
+        think_text = think_match.group(1).strip() if think_match else ""
+        clean = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+        # Find JSON in the cleaned output
+        start = clean.find("{")
+        end = clean.rfind("}") + 1
         if start >= 0 and end > start:
-            parsed = json.loads(raw[start:end])
+            parsed = json.loads(clean[start:end])
             claim_map_data = {
                 "job_id": job_id,
                 "node_id": node_id,
                 "niche": niche,
                 "node_tier": "scout",
+                "model": model,
                 "icd10_primary": parsed.get("icd10_primary", job.get("icd10", "")),
                 "cpt_codes": parsed.get("cpt_codes", job.get("cpt_codes", [])),
                 "clinical_summary": parsed.get("clinical_summary", ""),
                 "billing_flags": parsed.get("billing_flags", []),
+                "ncci_edit_type": parsed.get("ncci_edit_type", ""),
+                "modifier_applicable": parsed.get("modifier_applicable", False),
                 "estimated_financial_exposure": float(parsed.get("estimated_financial_exposure", 0.0)),
                 "ncci_citation": job.get("ncci_citation", ""),
                 "oig_priority": job.get("oig_priority", False),
                 "claim_map_status": "ready_for_refiner",
+                "reasoning_trace": think_text[:800] if think_text else "",
                 "generated_at": datetime.now(timezone.utc).isoformat(),
             }
         else:

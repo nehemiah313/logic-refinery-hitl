@@ -13,6 +13,9 @@ export interface Trace {
   niche: string;
   icd10: string;
   cpt_codes: string[];
+  ncci_citation?: string;
+  oig_priority?: boolean;
+  logic_trace?: string;
   medical_narrative: string;
   human_verified: boolean;
   auditor_id: string | null;

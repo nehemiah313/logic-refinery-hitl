@@ -91,14 +91,24 @@
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.78 0.18 75);
 }
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    height: 100%;
+    /* Prevent iOS bounce scroll on the root */
+    overscroll-behavior: none;
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    /* Momentum scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+  }
+  #root {
+    height: 100%;
+    height: 100dvh; /* dynamic viewport height — accounts for mobile browser chrome */
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -298,4 +308,45 @@
   .niche-cardiology { color: oklch(0.72 0.19 162); }
   .niche-anesthesia { color: oklch(0.78 0.18 75); }
   .niche-urology { color: oklch(0.70 0.15 45); }
+
+  /* ── Mobile-first utilities ── */
+
+  /* iOS safe-area bottom padding for bottom nav */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Prevent text selection on swipe targets */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Smooth momentum scrolling on iOS */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Tap highlight removal for action buttons */
+  .tap-transparent {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Bottom nav height compensation — add to scrollable areas on mobile */
+  .mobile-scroll-pad {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Thumb-zone action bar: frosted glass effect */
+  .thumb-bar {
+    background: oklch(0.12 0.008 265 / 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Touch-friendly active state scale */
+  .active\:scale-98:active {
+    transform: scale(0.98);
+  }
 }

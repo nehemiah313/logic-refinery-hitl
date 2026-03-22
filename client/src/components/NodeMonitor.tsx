@@ -1,6 +1,8 @@
 /**
  * NodeMonitor — Live cluster dashboard showing all 7 worker nodes
- * Design: Forensic Terminal — dark grid with per-node status indicators
+ * Design: Forensic Terminal × Native Mobile
+ * Mobile: Single-column node list, compact queue stats, collapsible setup panel
+ * Desktop: 2-column node grid (preserved)
  */
 import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
@@ -8,14 +10,16 @@ import {
   Cpu,
   Wifi,
   WifiOff,
-  Activity,
   Loader2,
-  Zap,
-  CheckCircle2,
   Clock,
   AlertTriangle,
   Play,
   RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -53,10 +57,10 @@ interface JobEntry {
 }
 
 const STATUS_CONFIG = {
-  idle: { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", dot: "bg-emerald-400", label: "IDLE" },
-  working: { color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/30", dot: "bg-amber-400 animate-pulse", label: "WORKING" },
-  stale: { color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/30", dot: "bg-orange-400", label: "STALE" },
-  offline: { color: "text-muted-foreground", bg: "bg-accent/20", border: "border-border", dot: "bg-muted-foreground", label: "OFFLINE" },
+  idle:    { color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/30", dot: "bg-emerald-400",                  label: "IDLE" },
+  working: { color: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   dot: "bg-amber-400 animate-pulse",       label: "WORKING" },
+  stale:   { color: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/30",  dot: "bg-orange-400",                    label: "STALE" },
+  offline: { color: "text-muted-foreground", bg: "bg-accent/20", border: "border-border",          dot: "bg-muted-foreground",              label: "OFFLINE" },
 };
 
 function NodeCard({ node }: { node: NodeInfo }) {
@@ -68,58 +72,57 @@ function NodeCard({ node }: { node: NodeInfo }) {
     : "offline";
 
   return (
-    <div className={`rounded-lg border ${cfg.border} ${cfg.bg} p-3 transition-all`}>
-      {/* Header */}
+    <div className={`rounded-xl border ${cfg.border} ${cfg.bg} p-3 transition-all`}>
+      {/* Header row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
           <span className="font-mono text-sm font-bold text-foreground">{node.node_id}</span>
         </div>
-        <span className={`font-mono text-xs ${cfg.color} stage-badge ${cfg.bg} border ${cfg.border}`}>
+        <span className={`font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.border} ${cfg.color}`}>
           {cfg.label}
         </span>
       </div>
 
-      {/* IP + Model */}
-      <div className="space-y-1 mb-2">
-        <div className="flex items-center gap-1.5">
-          {node.online ? (
-            <Wifi className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-          ) : (
-            <WifiOff className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-          )}
+      {/* IP + Model — single row on mobile */}
+      <div className="flex items-center gap-3 mb-2">
+        <div className="flex items-center gap-1">
+          {node.online
+            ? <Wifi className="w-3 h-3 text-emerald-400" />
+            : <WifiOff className="w-3 h-3 text-muted-foreground" />
+          }
           <span className="font-mono text-xs text-muted-foreground">{node.ip || "—"}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Cpu className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+        <div className="flex items-center gap-1">
+          <Cpu className="w-3 h-3 text-muted-foreground" />
           <span className="font-mono text-xs text-muted-foreground">{node.model}</span>
         </div>
       </div>
 
-      {/* Current job */}
+      {/* Active job */}
       {node.current_job && (
-        <div className="flex items-center gap-1.5 mb-2 bg-amber-500/10 rounded px-2 py-1">
+        <div className="flex items-center gap-1.5 mb-2 bg-amber-500/10 rounded-lg px-2.5 py-1.5">
           <Loader2 className="w-3 h-3 text-amber-400 animate-spin flex-shrink-0" />
           <span className="font-mono text-xs text-amber-400 truncate">{node.current_job}</span>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-1 border-t border-border/50 pt-2 mt-1">
-        <div>
-          <p className="font-mono text-xs text-muted-foreground">Jobs Done</p>
-          <p className="font-mono text-sm font-bold text-foreground">{node.jobs_completed}</p>
+      {/* Stats row */}
+      <div className="flex items-center justify-between border-t border-border/50 pt-2">
+        <div className="flex items-center gap-3">
+          <div>
+            <p className="font-mono text-[10px] text-muted-foreground">Jobs</p>
+            <p className="font-mono text-sm font-bold text-foreground">{node.jobs_completed}</p>
+          </div>
+          <div>
+            <p className="font-mono text-[10px] text-muted-foreground">Traces</p>
+            <p className="font-mono text-sm font-bold text-foreground">{node.traces_submitted}</p>
+          </div>
         </div>
-        <div>
-          <p className="font-mono text-xs text-muted-foreground">Traces</p>
-          <p className="font-mono text-sm font-bold text-foreground">{node.traces_submitted}</p>
+        <div className="flex items-center gap-1 text-muted-foreground">
+          <Clock className="w-2.5 h-2.5" />
+          <span className="font-mono text-[10px]">{seenAgo}</span>
         </div>
-      </div>
-
-      {/* Last seen */}
-      <div className="flex items-center gap-1 mt-1.5">
-        <Clock className="w-2.5 h-2.5 text-muted-foreground" />
-        <span className="font-mono text-xs text-muted-foreground">Last seen: {seenAgo}</span>
       </div>
     </div>
   );
@@ -131,6 +134,8 @@ export function NodeMonitor() {
   const [recentJobs, setRecentJobs] = useState<JobEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [dispatching, setDispatching] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [showJobs, setShowJobs] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -150,7 +155,7 @@ export function NodeMonitor() {
 
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 15000); // refresh every 15s
+    const interval = setInterval(refresh, 15000);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -175,7 +180,6 @@ export function NodeMonitor() {
   const onlineCount = nodes.filter(n => n.online).length;
   const workingCount = nodes.filter(n => n.status === "working").length;
 
-  // Show placeholder nodes if none registered yet
   const displayNodes = nodes.length > 0
     ? nodes
     : Array.from({ length: 7 }, (_, i) => ({
@@ -195,12 +199,13 @@ export function NodeMonitor() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card/50">
         <div>
-          <h2 className="font-mono text-base font-bold text-foreground">Cluster Monitor</h2>
-          <p className="font-mono text-xs text-muted-foreground mt-0.5">
-            {onlineCount}/{displayNodes.length} nodes online
+          <h2 className="font-mono text-sm font-bold text-foreground">Cluster Monitor</h2>
+          <p className="font-mono text-[10px] text-muted-foreground mt-0.5">
+            {onlineCount}/{displayNodes.length} online
             {workingCount > 0 && ` · ${workingCount} generating`}
           </p>
         </div>
@@ -209,7 +214,7 @@ export function NodeMonitor() {
             onClick={refresh}
             variant="outline"
             size="sm"
-            className="font-mono text-xs border-border text-muted-foreground hover:text-foreground"
+            className="font-mono text-xs border-border text-muted-foreground hover:text-foreground h-8 w-8 p-0"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </Button>
@@ -217,48 +222,53 @@ export function NodeMonitor() {
             onClick={handleDispatch}
             disabled={dispatching}
             size="sm"
-            className="font-mono text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+            className="font-mono text-xs bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3"
           >
             {dispatching ? (
-              <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Play className="w-3.5 h-3.5 mr-1.5" />
+              <Play className="w-3.5 h-3.5" />
             )}
-            Dispatch Cycle
+            <span className="ml-1.5 hidden sm:inline">Dispatch</span>
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Queue Stats */}
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+
+        {/* Queue Stats — 2×2 on mobile, 4-col on desktop */}
         {queueStats && (
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { label: "Queued", value: queueStats.queued, color: "text-amber-400" },
-              { label: "Running", value: queueStats.in_progress, color: "text-blue-400" },
-              { label: "Done", value: queueStats.completed, color: "text-emerald-400" },
-              { label: "Failed", value: queueStats.failed, color: "text-destructive" },
-            ].map(stat => (
-              <div key={stat.label} className="bg-accent/30 rounded-lg p-2 text-center">
-                <p className="font-mono text-xs text-muted-foreground">{stat.label}</p>
-                <p className={`font-mono text-lg font-bold ${stat.color}`}>{stat.value}</p>
+              { label: "Queued",  value: queueStats.queued,      color: "text-amber-400",   icon: Clock },
+              { label: "Running", value: queueStats.in_progress, color: "text-blue-400",    icon: Activity },
+              { label: "Done",    value: queueStats.completed,   color: "text-emerald-400", icon: CheckCircle2 },
+              { label: "Failed",  value: queueStats.failed,      color: "text-destructive", icon: XCircle },
+            ].map(({ label, value, color, icon: Icon }) => (
+              <div key={label} className="bg-accent/30 border border-border/50 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Icon className={`w-3 h-3 ${color}`} />
+                  <p className="font-mono text-[10px] text-muted-foreground uppercase">{label}</p>
+                </div>
+                <p className={`font-mono text-xl font-bold ${color}`}>{value}</p>
               </div>
             ))}
           </div>
         )}
 
-        {/* Node Grid */}
+        {/* Node Grid — single column on mobile, 2-col on sm+ */}
         <div>
-          <p className="font-mono text-xs text-muted-foreground uppercase tracking-wider mb-2">
-            Worker Nodes (7 × i5 / 8GB / Phi-4-Mini)
+          <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest mb-2">
+            Worker Nodes — 7 × i5 / 8GB / Phi-4-Mini
           </p>
           {loading ? (
-            <div className="flex items-center gap-2 text-muted-foreground py-4">
+            <div className="flex items-center gap-2 text-muted-foreground py-6 justify-center">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="font-mono text-xs">Loading node status...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {displayNodes.map(node => (
                 <NodeCard key={node.node_id} node={node} />
               ))}
@@ -266,68 +276,84 @@ export function NodeMonitor() {
           )}
         </div>
 
-        {/* Setup Instructions (shown when no nodes are registered) */}
+        {/* Setup Instructions — collapsible on mobile */}
         {nodes.length === 0 && (
-          <div className="bg-accent/20 border border-border rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <p className="font-mono text-xs font-semibold text-amber-400">No nodes connected yet</p>
-            </div>
-            <p className="font-mono text-xs text-muted-foreground mb-3">
-              Run this command on each i5 worker node:
-            </p>
-            <div className="bg-background rounded p-3 border border-border">
-              <code className="font-mono text-xs text-emerald-400 block">
-                # On each worker machine (replace X with 01-07)
-              </code>
-              <code className="font-mono text-xs text-foreground block mt-1">
-                python3 worker_client.py \
-              </code>
-              <code className="font-mono text-xs text-foreground block pl-4">
-                --node-id node_0X \
-              </code>
-              <code className="font-mono text-xs text-foreground block pl-4">
-                --orchestrator http://YOUR_IP:5001
-              </code>
-            </div>
+          <div className="bg-accent/20 border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowSetup(!showSetup)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                <p className="font-mono text-xs font-semibold text-amber-400">No nodes connected yet</p>
+              </div>
+              {showSetup
+                ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                : <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              }
+            </button>
+            {showSetup && (
+              <div className="px-4 pb-4">
+                <p className="font-mono text-xs text-muted-foreground mb-3">
+                  Run this on each i5 worker (replace X with 01–07):
+                </p>
+                <div className="bg-background rounded-lg p-3 border border-border overflow-x-auto">
+                  <code className="font-mono text-xs text-emerald-400 block whitespace-pre">{`python3 worker_client.py \\
+  --node-id node_0X \\
+  --orchestrator http://YOUR_IP:5001`}</code>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Recent Jobs */}
+        {/* Recent Jobs — collapsible */}
         {recentJobs.length > 0 && (
           <div>
-            <p className="font-mono text-xs text-muted-foreground uppercase tracking-wider mb-2">
-              Recent Jobs
-            </p>
-            <div className="space-y-1">
-              {recentJobs.map(job => (
-                <div
-                  key={job.job_id}
-                  className="flex items-center justify-between bg-accent/20 rounded px-3 py-1.5 border border-border/50"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                      job.status === "completed" ? "bg-emerald-400" :
-                      job.status === "in_progress" ? "bg-amber-400 animate-pulse" :
-                      job.status === "failed" ? "bg-destructive" :
-                      "bg-muted-foreground"
-                    }`} />
-                    <span className="font-mono text-xs text-muted-foreground truncate">{job.job_id}</span>
-                    <span className="font-mono text-xs text-foreground truncate">{job.niche?.replace("_", " ")}</span>
+            <button
+              onClick={() => setShowJobs(!showJobs)}
+              className="flex items-center justify-between w-full mb-2"
+            >
+              <p className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">
+                Recent Jobs ({recentJobs.length})
+              </p>
+              {showJobs
+                ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+              }
+            </button>
+            {showJobs && (
+              <div className="space-y-1.5">
+                {recentJobs.map(job => (
+                  <div
+                    key={job.job_id}
+                    className="flex items-center justify-between bg-accent/20 rounded-lg px-3 py-2 border border-border/50"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        job.status === "completed"  ? "bg-emerald-400" :
+                        job.status === "in_progress"? "bg-amber-400 animate-pulse" :
+                        job.status === "failed"     ? "bg-destructive" :
+                        "bg-muted-foreground"
+                      }`} />
+                      <span className="font-mono text-xs text-foreground truncate">
+                        {job.niche?.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <span className="font-mono text-[10px] text-muted-foreground">{job.assigned_to}</span>
+                      <span className={`font-mono text-[10px] ${
+                        job.status === "completed"  ? "text-emerald-400" :
+                        job.status === "in_progress"? "text-amber-400" :
+                        "text-muted-foreground"
+                      }`}>
+                        {job.status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="font-mono text-xs text-muted-foreground">{job.assigned_to}</span>
-                    <span className={`font-mono text-xs ${
-                      job.status === "completed" ? "text-emerald-400" :
-                      job.status === "in_progress" ? "text-amber-400" :
-                      "text-muted-foreground"
-                    }`}>
-                      {job.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

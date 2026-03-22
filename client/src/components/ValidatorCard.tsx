@@ -27,6 +27,8 @@ interface ValidatorCardProps {
   onApprove: () => void;
   onDeny: () => void;
   onSkip: () => void;
+  /** When true, hides the in-card action buttons (used on mobile where the thumb-zone bar handles actions) */
+  hideActionButtons?: boolean;
 }
 
 const NICHE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -112,7 +114,7 @@ function FinancialImpactGate({
   );
 }
 
-export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip }: ValidatorCardProps) {
+export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip, hideActionButtons = false }: ValidatorCardProps) {
   const [showFullCot, setShowFullCot] = useState(false);
   const [showLogicTrace, setShowLogicTrace] = useState(false);
   const [showImpactGate, setShowImpactGate] = useState(false);
@@ -365,8 +367,8 @@ export function ValidatorCard({ trace, swipeDirection, onApprove, onDeny, onSkip
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="px-5 py-4 flex items-center gap-3">
+      {/* Action Buttons — hidden on mobile (thumb-zone bar handles it) */}
+      <div className={`px-5 py-4 flex items-center gap-3 ${hideActionButtons ? "hidden md:flex" : "flex"}`}>
         <Button
           onClick={onDeny}
           variant="outline"

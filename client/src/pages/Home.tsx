@@ -1,8 +1,8 @@
 /**
  * Logic Refinery HITL — Main Page
- * Design: Forensic Terminal / Cyberpunk Data Lab
- * Layout: Asymmetric sidebar (left 28%) + tabbed main area (right 72%)
- * Tabs: Validator (HITL card queue) | Cluster Monitor (7-node dashboard)
+ * Design: Forensic Terminal × Native Mobile
+ * Mobile: Bottom tab nav, full-bleed card, thumb-zone action bar (no sidebar)
+ * Desktop: Left sidebar + tabbed main area (preserved)
  */
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
@@ -13,9 +13,19 @@ import { PipelineDiagram } from "@/components/PipelineDiagram";
 import { StatsPanel } from "@/components/StatsPanel";
 import { EmptyQueue } from "@/components/EmptyQueue";
 import { NodeMonitor } from "@/components/NodeMonitor";
-import { Loader2, ShieldCheck, Network } from "lucide-react";
+import { MobileHeader } from "@/components/MobileHeader";
+import { BottomNav } from "@/components/BottomNav";
+import { MobileStatsSheet } from "@/components/MobileStatsSheet";
+import {
+  Loader2,
+  ShieldCheck,
+  Network,
+  CheckCircle2,
+  XCircle,
+  SkipForward,
+} from "lucide-react";
 
-type ActiveTab = "validator" | "cluster";
+type ActiveTab = "validator" | "cluster" | "stats";
 
 export default function Home() {
   const [traces, setTraces] = useState<Trace[]>([]);
@@ -47,7 +57,7 @@ export default function Home() {
     loadData();
   }, [loadData]);
 
-  // Keyboard shortcuts (only active on validator tab)
+  // Keyboard shortcuts (only active on validator tab, desktop)
   useEffect(() => {
     if (activeTab !== "validator") return;
     const handleKey = (e: KeyboardEvent) => {
@@ -119,22 +129,37 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Left Sidebar */}
-      <Sidebar
-        stats={stats}
-        queueRemaining={queueRemaining}
-        onGenerate={handleGenerate}
-        generating={generating}
-        auditorId={auditorId}
-      />
 
-      {/* Main Content Area */}
+      {/* ── DESKTOP SIDEBAR (hidden on mobile) ── */}
+      <div className="hidden md:flex">
+        <Sidebar
+          stats={stats}
+          queueRemaining={queueRemaining}
+          onGenerate={handleGenerate}
+          generating={generating}
+          auditorId={auditorId}
+        />
+      </div>
+
+      {/* ── MAIN CONTENT ── */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Pipeline Diagram */}
-        <PipelineDiagram stats={stats} />
 
-        {/* Tab Bar */}
-        <div className="flex border-b border-border bg-card/30">
+        {/* Mobile Header (hidden on desktop) */}
+        <div className="md:hidden">
+          <MobileHeader
+            stats={stats}
+            queueRemaining={queueRemaining}
+            auditorId={auditorId}
+          />
+        </div>
+
+        {/* Desktop Pipeline Diagram (hidden on mobile) */}
+        <div className="hidden md:block">
+          <PipelineDiagram stats={stats} />
+        </div>
+
+        {/* Desktop Tab Bar (hidden on mobile) */}
+        <div className="hidden md:flex border-b border-border bg-card/30">
           <button
             onClick={() => setActiveTab("validator")}
             className={`flex items-center gap-2 px-5 py-2.5 font-mono text-xs transition-all border-b-2 ${
@@ -167,27 +192,30 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Tab Content */}
-        {activeTab === "validator" ? (
+        {/* ── TAB CONTENT ── */}
+        {/* On mobile: activeTab drives what's shown; desktop uses same logic */}
+        {(activeTab === "validator") && (
           <>
             {/* Validator Area */}
-            <div className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
+            <div className="flex-1 flex flex-col overflow-hidden relative">
               {/* Scanlines overlay */}
-              <div className="absolute inset-0 scanlines pointer-events-none opacity-30" />
+              <div className="absolute inset-0 scanlines pointer-events-none opacity-20" />
 
               {loading ? (
-                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                <div className="flex-1 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                   <Loader2 className="w-8 h-8 animate-spin text-primary" />
                   <p className="font-mono text-sm">Initializing Logic Refinery...</p>
                 </div>
               ) : !currentTrace ? (
-                <EmptyQueue onGenerate={handleGenerate} generating={generating} />
+                <div className="flex-1 flex items-center justify-center p-4">
+                  <EmptyQueue onGenerate={handleGenerate} generating={generating} />
+                </div>
               ) : (
-                <div className="w-full max-w-2xl">
-                  {/* Queue indicator */}
-                  <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  {/* Queue progress bar — mobile-friendly */}
+                  <div className="px-4 pt-3 pb-1 flex items-center justify-between">
                     <span className="font-mono text-xs text-muted-foreground">
-                      QUEUE: {queueRemaining} remaining
+                      {queueRemaining} remaining
                     </span>
                     <div className="flex gap-1">
                       {Array.from({ length: Math.min(queueRemaining, 8) }).map((_, i) => (
@@ -201,16 +229,55 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <ValidatorCard
-                    trace={currentTrace}
-                    swipeDirection={swipeDirection}
-                    onApprove={() => handleDecision("approve")}
-                    onDeny={() => handleDecision("deny")}
-                    onSkip={() => handleDecision("skip")}
-                  />
+                  {/* Scrollable card area */}
+                  <div className="flex-1 overflow-y-auto px-3 pb-2">
+                    <ValidatorCard
+                      trace={currentTrace}
+                      swipeDirection={swipeDirection}
+                      onApprove={() => handleDecision("approve")}
+                      onDeny={() => handleDecision("deny")}
+                      onSkip={() => handleDecision("skip")}
+                      hideActionButtons={true}
+                    />
+                  </div>
 
-                  {/* Keyboard hints */}
-                  <div className="flex items-center justify-center gap-6 mt-4 text-muted-foreground">
+                  {/* ── THUMB-ZONE ACTION BAR (always visible, pinned above bottom nav) ── */}
+                  <div className="relative z-10 px-4 py-3 border-t border-border bg-background/95 backdrop-blur-sm
+                                  md:hidden">
+                    <div className="flex items-center gap-3 max-w-sm mx-auto">
+                      <button
+                        onClick={() => handleDecision("deny")}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl
+                                   border-2 border-destructive/50 bg-destructive/10 text-destructive
+                                   active:scale-95 transition-transform font-mono text-sm font-bold
+                                   hover:bg-destructive/20"
+                      >
+                        <XCircle className="w-5 h-5" />
+                        DENY
+                      </button>
+                      <button
+                        onClick={() => handleDecision("skip")}
+                        className="flex items-center justify-center w-12 h-12 rounded-xl
+                                   border border-border bg-accent/30 text-muted-foreground
+                                   active:scale-95 transition-transform"
+                      >
+                        <SkipForward className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDecision("approve")}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl
+                                   border-2 border-emerald-500/50 bg-emerald-500/10 text-emerald-400
+                                   active:scale-95 transition-transform font-mono text-sm font-bold
+                                   hover:bg-emerald-500/20"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                        APPROVE
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Desktop keyboard hints + action buttons (shown inside card on desktop) */}
+                  <div className="hidden md:flex items-center justify-center gap-6 py-3 text-muted-foreground">
                     <span className="font-mono text-xs flex items-center gap-1.5">
                       <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">←</kbd>
                       Deny
@@ -228,15 +295,40 @@ export default function Home() {
               )}
             </div>
 
-            {/* Bottom Stats Bar */}
-            <StatsPanel stats={stats} />
+            {/* Desktop Bottom Stats Bar */}
+            <div className="hidden md:block">
+              <StatsPanel stats={stats} />
+            </div>
           </>
-        ) : (
+        )}
+
+        {activeTab === "cluster" && (
           <div className="flex-1 overflow-hidden">
             <NodeMonitor />
           </div>
         )}
+
+        {activeTab === "stats" && (
+          <div className="flex-1 overflow-hidden md:hidden">
+            <MobileStatsSheet
+              stats={stats}
+              queueRemaining={queueRemaining}
+              onGenerate={handleGenerate}
+              generating={generating}
+              auditorId={auditorId}
+            />
+          </div>
+        )}
       </main>
+
+      {/* ── BOTTOM NAV (mobile only) ── */}
+      <div className="md:hidden">
+        <BottomNav
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          queueRemaining={queueRemaining}
+        />
+      </div>
     </div>
   );
 }

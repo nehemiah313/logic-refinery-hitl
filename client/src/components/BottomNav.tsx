@@ -1,11 +1,11 @@
 /**
  * BottomNav — Mobile bottom tab navigation bar
  * Design: Forensic Terminal × Native Mobile — frosted glass pill tabs
- * Tabs: Validator (HITL) | Cluster Monitor | Stats & Export
+ * Tabs: Validator (HITL) | Cluster Monitor | Load Balancer | Stats & Export
  */
-import { ShieldCheck, Network, BarChart3 } from "lucide-react";
+import { ShieldCheck, Network, BarChart3, Scale } from "lucide-react";
 
-type ActiveTab = "validator" | "cluster" | "stats";
+export type ActiveTab = "validator" | "cluster" | "balancer" | "stats";
 
 interface BottomNavProps {
   activeTab: ActiveTab;
@@ -20,6 +20,7 @@ const TABS: {
 }[] = [
   { id: "validator", label: "Validate", Icon: ShieldCheck },
   { id: "cluster",   label: "Cluster",  Icon: Network },
+  { id: "balancer",  label: "Balancer", Icon: Scale },
   { id: "stats",     label: "Stats",    Icon: BarChart3 },
 ];
 
@@ -39,13 +40,15 @@ export function BottomNav({ activeTab, onTabChange, queueRemaining }: BottomNavP
               className={`flex-1 flex flex-col items-center justify-center gap-0.5 relative
                           transition-colors active:scale-95
                           ${isActive
-                            ? "text-primary"
+                            ? id === "balancer" ? "text-amber-400" : "text-primary"
                             : "text-muted-foreground hover:text-foreground"
                           }`}
             >
               {/* Active indicator line */}
               {isActive && (
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-primary" />
+                <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full ${
+                  id === "balancer" ? "bg-amber-400" : "bg-primary"
+                }`} />
               )}
 
               <div className="relative">
@@ -60,7 +63,10 @@ export function BottomNav({ activeTab, onTabChange, queueRemaining }: BottomNavP
               </div>
 
               <span className={`font-mono text-[10px] leading-none transition-colors
-                                ${isActive ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                                ${isActive
+                                  ? id === "balancer" ? "text-amber-400 font-semibold" : "text-primary font-semibold"
+                                  : "text-muted-foreground"
+                                }`}>
                 {label}
               </span>
             </button>

@@ -29,6 +29,8 @@ from pathlib import Path
 from flask import Flask, jsonify, request, Response, stream_with_context
 from flask_cors import CORS
 import orchestrator as orch
+from load_balancer import load_balancer, detect_node_tier
+from claim_mapper import generate_claim_map, get_sample_bill
 
 app = Flask(__name__)
 CORS(app, origins=["*"])
@@ -39,6 +41,24 @@ CORS(app, origins=["*"])
 BASE_DIR = Path(__file__).parent
 VAULT_PATH = BASE_DIR / "vault.jsonl"
 GOLD_PATH = BASE_DIR / "gold_standard.jsonl"
+CLAIM_MAP_PATH = BASE_DIR / "claim_maps.jsonl"
+
+# In-memory claim map store (also persisted to JSONL)
+_claim_maps: list[dict] = []
+if CLAIM_MAP_PATH.exists():
+    with open(CLAIM_MAP_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    _claim_maps.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+
+def _save_claim_maps():
+    with open(CLAIM_MAP_PATH, "w") as f:
+        for cm in _claim_maps:
+            f.write(json.dumps(cm) + "\n")
 
 # ---------------------------------------------------------------------------
 # Realistic medical billing scenarios (the "GCP ML Baseline")
@@ -1026,7 +1046,218 @@ def _score_trace(cot: list, decision: str, cpt_codes: list) -> int:
     return min(score, 100)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LOAD BALANCER API — Scout & Refiner routing
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/lb/stats", methods=["GET"])
+def lb_stats():
+    """Load balancer queue statistics for the dashboard."""
+    return jsonify(load_balancer.get_stats())
+
+
+@app.route("/api/lb/detect_tier", methods=["POST"])
+def lb_detect_tier():
+    """
+    Detect node tier from hardware_profile.
+    Worker nodes call this at startup to learn their tier.
+    Body: { hardware_profile: {...} }
+    """
+    data = request.get_json() or {}
+    hw = data.get("hardware_profile", {})
+    if not hw:
+        return jsonify({"error": "hardware_profile required"}), 400
+    result = detect_node_tier(hw)
+    return jsonify({"success": True, **result})
+
+
+@app.route("/api/lb/queue/scout", methods=["GET"])
+def lb_scout_queue():
+    """Return a snapshot of the Scout job queue."""
+    limit = int(request.args.get("limit", 20))
+    return jsonify({
+        "queue": load_balancer.get_queue_snapshot("scout", limit),
+        "stats": load_balancer.get_stats()["scout_queue"],
+    })
+
+
+@app.route("/api/lb/queue/refiner", methods=["GET"])
+def lb_refiner_queue():
+    """Return a snapshot of the Refiner job queue (score-weighted)."""
+    limit = int(request.args.get("limit", 20))
+    return jsonify({
+        "queue": load_balancer.get_queue_snapshot("refiner", limit),
+        "stats": load_balancer.get_stats()["refiner_queue"],
+    })
+
+
+@app.route("/api/lb/jobs/claim", methods=["POST"])
+def lb_claim_job():
+    """
+    Worker polls this to claim the next job for its tier.
+    Body: { node_id: str, node_tier: "scout" | "refiner" }
+    """
+    data = request.get_json() or {}
+    node_id = data.get("node_id", "unknown")
+    node_tier = data.get("node_tier", "scout")
+
+    if node_tier not in ("scout", "refiner"):
+        return jsonify({"error": "node_tier must be 'scout' or 'refiner'"}), 400
+
+    job = load_balancer.claim_job(node_id, node_tier)
+    if not job:
+        return jsonify({"job": None, "message": "No jobs available for this tier"})
+
+    return jsonify({"job": job})
+
+
+@app.route("/api/lb/claim_maps/submit", methods=["POST"])
+def lb_submit_claim_map():
+    """
+    Scout node submits a completed Claim Map.
+    Orchestrator auto-creates a Refiner job from it.
+    Body: { job_id: str, node_id: str, claim_map: {...} }
+    """
+    data = request.get_json() or {}
+    job_id = data.get("job_id", "")
+    node_id = data.get("node_id", "unknown")
+    claim_map = data.get("claim_map", {})
+
+    if not claim_map:
+        return jsonify({"error": "claim_map required"}), 400
+
+    # Mark Scout job complete
+    load_balancer.complete_job(job_id, {"claim_map_id": claim_map.get("claim_map_id")})
+
+    # Persist claim map
+    _claim_maps.append(claim_map)
+    _save_claim_maps()
+
+    # Auto-create Refiner job if NCCI edits were triggered
+    refiner_job = None
+    if claim_map.get("audit_summary", {}).get("ready_for_refiner", False):
+        refiner_job = load_balancer.enqueue_refiner_job(
+            claim_map=claim_map,
+            ncci_citation=claim_map.get("ncci_citation", ""),
+            oig_priority=claim_map.get("oig_priority", False),
+        )
+
+    return jsonify({
+        "success": True,
+        "claim_map_id": claim_map.get("claim_map_id"),
+        "refiner_job_created": refiner_job is not None,
+        "refiner_job_id": refiner_job["job_id"] if refiner_job else None,
+        "message": "Claim Map stored. Refiner job queued." if refiner_job else "Claim Map stored. No NCCI edits found — no Refiner job needed.",
+    })
+
+
+@app.route("/api/lb/claim_maps", methods=["GET"])
+def lb_list_claim_maps():
+    """List recent claim maps with audit summary."""
+    limit = int(request.args.get("limit", 20))
+    niche = request.args.get("niche")
+    maps = _claim_maps
+    if niche:
+        maps = [m for m in maps if m.get("niche") == niche]
+    recent = sorted(maps, key=lambda m: m.get("generated_at", ""), reverse=True)[:limit]
+    return jsonify({
+        "claim_maps": recent,
+        "total": len(_claim_maps),
+    })
+
+
+@app.route("/api/lb/claim_maps/generate_sample", methods=["POST"])
+def lb_generate_sample_claim_map():
+    """
+    Generate a sample Claim Map from a synthetic raw bill.
+    Used for testing without real GCP data.
+    Body: { niche?: str, node_id?: str }
+    """
+    data = request.get_json() or {}
+    niche = data.get("niche")
+    node_id = data.get("node_id", "node_scout_demo")
+
+    raw_bill = get_sample_bill(niche)
+    claim_map = generate_claim_map(raw_bill, node_id)
+
+    # Enqueue a Scout job and immediately complete it (demo mode)
+    scout_job = load_balancer.enqueue_scout_job(
+        niche=claim_map["niche"],
+        raw_bill=raw_bill,
+        source_bill_id=claim_map["source_bill_id"],
+    )
+    load_balancer.complete_job(scout_job["job_id"], {"claim_map_id": claim_map["claim_map_id"]})
+
+    # Persist
+    _claim_maps.append(claim_map)
+    _save_claim_maps()
+
+    # Auto-create Refiner job
+    refiner_job = None
+    if claim_map.get("audit_summary", {}).get("ready_for_refiner", False):
+        refiner_job = load_balancer.enqueue_refiner_job(
+            claim_map=claim_map,
+            ncci_citation=claim_map.get("ncci_citation", ""),
+            oig_priority=claim_map.get("oig_priority", False),
+        )
+
+    return jsonify({
+        "success": True,
+        "claim_map": claim_map,
+        "refiner_job_id": refiner_job["job_id"] if refiner_job else None,
+    })
+
+
+@app.route("/api/lb/seed", methods=["POST"])
+def lb_seed():
+    """
+    Seed the load balancer with sample jobs for all 9 niches.
+    Used for demo and testing.
+    """
+    from claim_mapper import SAMPLE_BILLS
+    created_scout = 0
+    created_refiner = 0
+
+    for bill in SAMPLE_BILLS:
+        raw = dict(bill)
+        # Enqueue Scout job
+        load_balancer.enqueue_scout_job(
+            niche=raw["niche"],
+            raw_bill=raw,
+        )
+        created_scout += 1
+
+        # Also generate a Claim Map immediately and queue a Refiner job
+        cm = generate_claim_map(raw, "seed_node")
+        if cm["audit_summary"]["ready_for_refiner"]:
+            load_balancer.enqueue_refiner_job(
+                claim_map=cm,
+                ncci_citation=cm.get("ncci_citation", ""),
+                oig_priority=cm.get("oig_priority", False),
+            )
+            created_refiner += 1
+
+    return jsonify({
+        "success": True,
+        "scout_jobs_created": created_scout,
+        "refiner_jobs_created": created_refiner,
+        "message": f"Seeded {created_scout} Scout jobs and {created_refiner} Refiner jobs.",
+    })
+
+
 if __name__ == "__main__":
+    # Seed the load balancer with sample jobs on startup
+    from claim_mapper import SAMPLE_BILLS
+    for bill in SAMPLE_BILLS:
+        raw = dict(bill)
+        load_balancer.enqueue_scout_job(niche=raw["niche"], raw_bill=raw)
+        cm = generate_claim_map(raw, "startup_seed")
+        if cm["audit_summary"]["ready_for_refiner"]:
+            load_balancer.enqueue_refiner_job(
+                claim_map=cm,
+                ncci_citation=cm.get("ncci_citation", ""),
+                oig_priority=cm.get("oig_priority", False),
+            )
     # Start the orchestrator scheduler (fires job batches every 2 hours)
     orch.start_scheduler(interval_seconds=7200)
     app.run(host="0.0.0.0", port=5001, debug=False)

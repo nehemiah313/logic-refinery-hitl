@@ -13,8 +13,9 @@ import { PipelineDiagram } from "@/components/PipelineDiagram";
 import { StatsPanel } from "@/components/StatsPanel";
 import { EmptyQueue } from "@/components/EmptyQueue";
 import { NodeMonitor } from "@/components/NodeMonitor";
+import LoadBalancerPanel from "@/components/LoadBalancerPanel";
 import { MobileHeader } from "@/components/MobileHeader";
-import { BottomNav } from "@/components/BottomNav";
+import { BottomNav, type ActiveTab } from "@/components/BottomNav";
 import { MobileStatsSheet } from "@/components/MobileStatsSheet";
 import {
   Loader2,
@@ -23,9 +24,10 @@ import {
   CheckCircle2,
   XCircle,
   SkipForward,
+  Scale,
 } from "lucide-react";
 
-type ActiveTab = "validator" | "cluster" | "stats";
+// ActiveTab is imported from BottomNav to keep a single source of truth
 
 export default function Home() {
   const [traces, setTraces] = useState<Trace[]>([]);
@@ -190,6 +192,20 @@ export default function Home() {
               7 nodes
             </span>
           </button>
+          <button
+            onClick={() => setActiveTab("balancer")}
+            className={`flex items-center gap-2 px-5 py-2.5 font-mono text-xs transition-all border-b-2 ${
+              activeTab === "balancer"
+                ? "border-amber-500 text-amber-400 bg-amber-500/5"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5" />
+            Load Balancer
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-bold text-xs">
+              Scout / Refiner
+            </span>
+          </button>
         </div>
 
         {/* ── TAB CONTENT ── */}
@@ -305,6 +321,12 @@ export default function Home() {
         {activeTab === "cluster" && (
           <div className="flex-1 overflow-hidden">
             <NodeMonitor />
+          </div>
+        )}
+
+        {activeTab === "balancer" && (
+          <div className="flex-1 overflow-y-auto">
+            <LoadBalancerPanel />
           </div>
         )}
 

@@ -1,33 +1,41 @@
 """
-Logic Refinery — Worker Node Client
-=====================================
-This script runs on each of the 7 i5 worker nodes.
-It connects to the orchestrator (Flask backend) and:
+Logic Refinery v3.0 — Worker Node Client (Scout & Refiner Contract)
+=====================================================================
+This script runs on each worker node. It auto-detects its tier (Scout or
+Refiner) from hardware profile, then routes to the correct Load Balancer
+endpoints.
 
-  1. Registers itself with the orchestrator
-  2. Polls for jobs every 30 seconds
-  3. When a job arrives, calls Ollama Phi-4-Mini locally to generate traces
-  4. Submits the generated traces back to the orchestrator
-  5. Sends heartbeats every 60 seconds to stay marked as online
+TIER ROUTING:
+  i5-Scout  → /api/lb/jobs/claim/scout  → Claim Map parsing (deterministic)
+  Ryzen-Refiner → /api/lb/jobs/claim/refiner → Gold Standard reasoning (LLM)
 
 SETUP ON EACH WORKER NODE:
   1. Install Python 3.10+:    sudo apt install python3 python3-pip -y
   2. Install requests:        pip3 install requests
   3. Make sure Ollama is running: ollama serve
-  4. Pull Phi-4-Mini:         ollama pull phi4-mini
+  4. Pull your model:
+       i5-Scout:        ollama pull phi4-mini
+       Ryzen-Refiner:   ollama pull mistral-nemo   (or llama3.1:8b)
   5. Run this script:
+       # Auto-detect tier (recommended):
        python3 worker_client.py --node-id node_01 --orchestrator http://192.168.1.100:5001
 
-  Replace 192.168.1.100 with the IP of your orchestrator machine.
-  Replace node_01 with a unique ID for each machine (node_01 through node_07).
+       # Force Scout tier:
+       python3 worker_client.py --node-id node_01 --orchestrator http://192.168.1.100:5001 --tier scout
 
-Author: Manus AI
+       # Force Refiner tier:
+       python3 worker_client.py --node-id ryzen_01 --orchestrator http://192.168.1.100:5001 --tier refiner --model mistral-nemo
+
+Author: Manus AI — Logic Refinery v3.0
 """
 
 import argparse
 import json
 import logging
+import os
+import platform
 import socket
+import subprocess
 import sys
 import time
 import threading
@@ -43,11 +51,12 @@ except ImportError:
 # Configuration
 # ---------------------------------------------------------------------------
 DEFAULT_ORCHESTRATOR = "http://192.168.1.100:5001"
-DEFAULT_OLLAMA = "http://localhost:11434"
-DEFAULT_MODEL = "phi4-mini"
-POLL_INTERVAL = 30        # seconds between job polls
-HEARTBEAT_INTERVAL = 60   # seconds between heartbeats
-MAX_RETRIES = 3
+DEFAULT_OLLAMA       = "http://localhost:11434"
+DEFAULT_SCOUT_MODEL  = "phi4-mini"
+DEFAULT_REFINER_MODEL = "mistral-nemo"
+POLL_INTERVAL        = 30        # seconds between job polls
+HEARTBEAT_INTERVAL   = 60        # seconds between heartbeats
+MAX_RETRIES          = 3
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,55 +70,230 @@ logger = logging.getLogger("worker")
 
 
 # ---------------------------------------------------------------------------
+# Hardware Profile Detection
+# ---------------------------------------------------------------------------
+
+def detect_hardware_profile(model: str) -> dict:
+    """
+    Probe the local machine for RAM, VRAM, and CPU info.
+    Returns a hardware_profile dict suitable for /api/lb/detect_tier.
+    """
+    profile = {
+        "model": model,
+        "ram_gb": 8.0,
+        "vram_gb": 0.0,
+        "cpu_brand": "unknown",
+        "cpu_model": platform.processor() or "unknown",
+    }
+
+    # RAM detection
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    profile["ram_gb"] = round(kb / 1024 / 1024, 1)
+                    break
+    except Exception:
+        pass
+
+    # VRAM detection via nvidia-smi
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            vram_mb = int(result.stdout.strip().split("\n")[0])
+            profile["vram_gb"] = round(vram_mb / 1024, 1)
+    except Exception:
+        pass
+
+    # CPU brand from /proc/cpuinfo
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if "model name" in line.lower():
+                    cpu_str = line.split(":")[1].strip().lower()
+                    profile["cpu_model"] = cpu_str
+                    if "amd" in cpu_str or "ryzen" in cpu_str:
+                        profile["cpu_brand"] = "amd"
+                    elif "intel" in cpu_str:
+                        profile["cpu_brand"] = "intel"
+                    break
+    except Exception:
+        pass
+
+    return profile
+
+
+def detect_tier_from_orchestrator(node_id: str, orchestrator: str, model: str) -> str:
+    """
+    Send hardware profile to the orchestrator's tier detection endpoint.
+    Returns 'scout' or 'refiner'.
+    """
+    profile = detect_hardware_profile(model)
+    logger.info(
+        f"Hardware profile: RAM={profile['ram_gb']}GB VRAM={profile['vram_gb']}GB "
+        f"CPU={profile['cpu_model']} Model={profile['model']}"
+    )
+    try:
+        resp = requests.post(
+            f"{orchestrator}/api/lb/detect_tier",
+            json={"hardware_profile": profile},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        tier = data.get("tier", "scout")
+        confidence = data.get("confidence", "unknown")
+        reason = data.get("reason", "")
+        logger.info(f"Tier detected: {tier.upper()} (confidence={confidence})")
+        logger.info(f"  Reason: {reason}")
+        return tier
+    except Exception as e:
+        logger.warning(f"Tier detection failed ({e}), defaulting to scout")
+        return "scout"
+
+
+# ---------------------------------------------------------------------------
 # Ollama Interface
 # ---------------------------------------------------------------------------
 
-def call_ollama(prompt: str, model: str, ollama_url: str) -> str:
-    """
-    Call Ollama's local API to generate a response from Phi-4-Mini.
-    Returns the raw text response.
-    """
+def call_ollama(prompt: str, model: str, ollama_url: str, max_tokens: int = 1024) -> str:
+    """Call Ollama's local API. Returns the raw text response."""
     url = f"{ollama_url}/api/generate"
     payload = {
         "model": model,
         "prompt": prompt,
         "stream": False,
         "options": {
-            "temperature": 0.3,    # Low temperature for consistent medical reasoning
-            "num_predict": 1024,   # Max tokens per trace
+            "temperature": 0.3,
+            "num_predict": max_tokens,
         },
     }
     try:
-        resp = requests.post(url, json=payload, timeout=120)
+        resp = requests.post(url, json=payload, timeout=180)
         resp.raise_for_status()
         return resp.json().get("response", "")
     except requests.exceptions.ConnectionError:
         raise RuntimeError(f"Cannot connect to Ollama at {ollama_url}. Is 'ollama serve' running?")
     except requests.exceptions.Timeout:
-        raise RuntimeError("Ollama timed out after 120 seconds.")
+        raise RuntimeError("Ollama timed out after 180 seconds.")
     except Exception as e:
         raise RuntimeError(f"Ollama error: {e}")
 
 
-def parse_ollama_response(raw_text: str, job: dict) -> dict:
+# ---------------------------------------------------------------------------
+# Scout Task: Claim Map Parsing
+# ---------------------------------------------------------------------------
+
+def process_scout_job(job: dict, node_id: str, orchestrator: str, ollama_url: str, model: str):
     """
-    Parse Ollama's response into a structured trace.
-    Phi-4-Mini is instructed to return JSON, but we handle plain text too.
+    Scout task: parse a raw bill scenario into a structured Claim Map.
+    This is a lightweight, deterministic task — uses Ollama only for
+    narrative extraction, then posts the Claim Map to the orchestrator.
     """
-    # Try to extract JSON from the response
+    job_id = job["job_id"]
+    niche = job.get("niche", "Unknown")
+    scenario = job.get("scenario", "")
+    logger.info(f"[SCOUT] Processing job {job_id} — {niche}")
+
+    # Build a lightweight extraction prompt (not full Gold Standard reasoning)
+    prompt = (
+        f"You are a medical billing code parser. Extract structured data from this scenario.\n\n"
+        f"SCENARIO:\n{scenario}\n\n"
+        f"Extract and return ONLY valid JSON with this exact structure:\n"
+        f'{{"icd10_primary": "...", "cpt_codes": ["...", "..."], '
+        f'"clinical_summary": "...", "billing_flags": ["..."], '
+        f'"estimated_financial_exposure": 0.00}}\n\n'
+        f"Be concise. Focus on codes and flags only."
+    )
+
+    claim_map_data = None
+    try:
+        raw = call_ollama(prompt, model, ollama_url, max_tokens=512)
+        # Parse the LLM extraction
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            parsed = json.loads(raw[start:end])
+            claim_map_data = {
+                "job_id": job_id,
+                "node_id": node_id,
+                "niche": niche,
+                "node_tier": "scout",
+                "icd10_primary": parsed.get("icd10_primary", job.get("icd10", "")),
+                "cpt_codes": parsed.get("cpt_codes", job.get("cpt_codes", [])),
+                "clinical_summary": parsed.get("clinical_summary", ""),
+                "billing_flags": parsed.get("billing_flags", []),
+                "estimated_financial_exposure": float(parsed.get("estimated_financial_exposure", 0.0)),
+                "ncci_citation": job.get("ncci_citation", ""),
+                "oig_priority": job.get("oig_priority", False),
+                "claim_map_status": "ready_for_refiner",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            raise ValueError("No JSON found in Ollama response")
+    except Exception as e:
+        logger.warning(f"[SCOUT] LLM extraction failed ({e}), using job metadata as fallback")
+        claim_map_data = {
+            "job_id": job_id,
+            "node_id": node_id,
+            "niche": niche,
+            "node_tier": "scout",
+            "icd10_primary": job.get("icd10", ""),
+            "cpt_codes": job.get("cpt_codes", []),
+            "clinical_summary": scenario[:200] if scenario else "",
+            "billing_flags": [],
+            "estimated_financial_exposure": job.get("financial_impact_estimate", 0.0),
+            "ncci_citation": job.get("ncci_citation", ""),
+            "oig_priority": job.get("oig_priority", False),
+            "claim_map_status": "ready_for_refiner",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    # Submit the Claim Map to the orchestrator
+    try:
+        resp = requests.post(
+            f"{orchestrator}/api/lb/claim_maps/submit",
+            json={"node_id": node_id, "job_id": job_id, "claim_map": claim_map_data},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        logger.info(f"[SCOUT] Claim Map submitted for job {job_id}")
+    except Exception as e:
+        logger.error(f"[SCOUT] Claim Map submission failed: {e}")
+
+    # Mark job complete
+    _mark_lb_job_complete(node_id, job_id, "scout", 1, orchestrator)
+
+
+# ---------------------------------------------------------------------------
+# Refiner Task: Gold Standard Reasoning
+# ---------------------------------------------------------------------------
+
+def parse_refiner_response(raw_text: str, job: dict) -> dict:
+    """
+    Parse Ollama's Gold Standard reasoning response into a structured trace.
+    Handles both clean JSON and plain-text fallback.
+    """
     trace = {
         "niche": job.get("niche", "Unknown"),
         "icd10": job.get("icd10", ""),
         "cpt_codes": job.get("cpt_codes", []),
         "medical_narrative": job.get("scenario", ""),
+        "ncci_citation": job.get("ncci_citation", ""),
+        "oig_priority": job.get("oig_priority", False),
         "chain_of_thought": [],
         "final_decision": "",
         "financial_impact": 0.0,
+        "schema_version": "gold_standard_v2.1",
+        "bittensor_ready": True,
     }
 
     # Attempt JSON parse
     try:
-        # Find JSON block in the response
         start = raw_text.find("{")
         end = raw_text.rfind("}") + 1
         if start >= 0 and end > start:
@@ -121,37 +305,110 @@ def parse_ollama_response(raw_text: str, job: dict) -> dict:
     except (json.JSONDecodeError, ValueError):
         pass
 
-    # Fallback: parse plain text into chain_of_thought
-    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-    cot = []
-    decision = ""
+    # Fallback: extract think block and plain text
+    think_start = raw_text.find("<think>")
+    think_end = raw_text.find("</think>")
+    if think_start >= 0 and think_end > think_start:
+        think_content = raw_text[think_start + 7:think_end].strip()
+        steps = [s.strip() for s in think_content.split("\n") if s.strip() and len(s.strip()) > 20]
+        trace["chain_of_thought"] = steps[:8]
+
+    lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
     for line in lines:
         lower = line.lower()
-        if any(kw in lower for kw in ["decision:", "final:", "conclusion:", "deny", "allow", "approve"]):
-            decision = line
-        elif len(line) > 20:
-            cot.append(line)
+        if any(kw in lower for kw in ["decision:", "final:", "conclusion:", "deny", "allow", "approve", "reduce"]):
+            trace["final_decision"] = line
+            break
 
-    trace["chain_of_thought"] = cot[:8]  # Cap at 8 steps
-    trace["final_decision"] = decision or (lines[-1] if lines else "Unable to determine.")
+    if not trace["chain_of_thought"]:
+        trace["chain_of_thought"] = [l for l in lines if len(l) > 20][:8]
+    if not trace["final_decision"] and lines:
+        trace["final_decision"] = lines[-1]
+
     return trace
 
 
+def process_refiner_job(job: dict, node_id: str, orchestrator: str, ollama_url: str, model: str):
+    """
+    Refiner task: generate Gold Standard logic traces via full LLM reasoning.
+    Uses the job's prompt_template (which includes <think> tag instructions).
+    """
+    job_id = job["job_id"]
+    traces_requested = job.get("traces_requested", 3)
+    prompt = job.get("prompt_template", "")
+    niche = job.get("niche", "Unknown")
+
+    logger.info(f"[REFINER] Processing job {job_id} — {niche} — {traces_requested} Gold traces requested")
+
+    generated_traces = []
+
+    for i in range(traces_requested):
+        logger.info(f"  [REFINER] Generating Gold trace {i+1}/{traces_requested} via {model}...")
+        try:
+            varied_prompt = (
+                f"{prompt}\n\n"
+                f"Generate Gold Standard trace #{i+1}. "
+                f"Use <think>...</think> tags for your multi-stage reasoning "
+                f"(READ → ANALYZE → PLAN → IMPLEMENT → VERIFY). "
+                f"Vary clinical details slightly while keeping the core NCCI scenario. "
+                f"Respond ONLY with valid JSON:\n"
+                f'{{"chain_of_thought": ["READ: ...", "ANALYZE: ...", "PLAN: ...", "IMPLEMENT: ...", "VERIFY: ..."], '
+                f'"final_decision": "...", "financial_impact": 0.00}}'
+            )
+
+            raw = call_ollama(varied_prompt, model, ollama_url, max_tokens=2048)
+            trace = parse_refiner_response(raw, job)
+
+            # Quality gate: require at least 3 CoT steps and a decision
+            if len(trace["chain_of_thought"]) < 3 or not trace["final_decision"]:
+                logger.warning(f"  [REFINER] Trace {i+1} failed quality gate — skipping")
+                continue
+
+            generated_traces.append(trace)
+            logger.info(
+                f"  [REFINER] Trace {i+1} generated — "
+                f"{len(trace['chain_of_thought'])} CoT steps — "
+                f"impact=${trace['financial_impact']:.2f}"
+            )
+
+        except RuntimeError as e:
+            logger.error(f"  [REFINER] Trace {i+1} failed: {e}")
+            if "Cannot connect" in str(e):
+                logger.error("Ollama is not running. Aborting job.")
+                break
+        except Exception as e:
+            logger.error(f"  [REFINER] Trace {i+1} unexpected error: {e}")
+
+    # Submit traces to the main HITL vault
+    if generated_traces:
+        _submit_traces_to_vault(node_id, job_id, generated_traces, orchestrator)
+
+    _mark_lb_job_complete(node_id, job_id, "refiner", len(generated_traces), orchestrator)
+    logger.info(f"[REFINER] Job {job_id} complete — {len(generated_traces)}/{traces_requested} Gold traces generated")
+
+
 # ---------------------------------------------------------------------------
-# Orchestrator API Calls
+# Orchestrator API Calls (Load Balancer Contract)
 # ---------------------------------------------------------------------------
 
-def register(node_id: str, orchestrator: str, model: str) -> bool:
-    """Register this node with the orchestrator."""
+def register_with_lb(node_id: str, orchestrator: str, model: str, tier: str) -> bool:
+    """Register this node with the orchestrator using the LB-aware endpoint."""
     try:
         ip = socket.gethostbyname(socket.gethostname())
+        profile = detect_hardware_profile(model)
         resp = requests.post(
             f"{orchestrator}/api/nodes/register",
-            json={"node_id": node_id, "ip": ip, "model": model},
+            json={
+                "node_id": node_id,
+                "ip": ip,
+                "model": model,
+                "tier": tier,
+                "hardware_profile": profile,
+            },
             timeout=10,
         )
         resp.raise_for_status()
-        logger.info(f"Registered as {node_id} @ {ip} with orchestrator {orchestrator}")
+        logger.info(f"Registered as {node_id} (tier={tier.upper()}) @ {ip}")
         return True
     except Exception as e:
         logger.error(f"Registration failed: {e}")
@@ -159,7 +416,7 @@ def register(node_id: str, orchestrator: str, model: str) -> bool:
 
 
 def send_heartbeat(node_id: str, orchestrator: str):
-    """Send a heartbeat to the orchestrator."""
+    """Send a heartbeat to keep the node marked as online."""
     try:
         requests.post(
             f"{orchestrator}/api/nodes/heartbeat",
@@ -167,29 +424,30 @@ def send_heartbeat(node_id: str, orchestrator: str):
             timeout=5,
         )
     except Exception:
-        pass  # Heartbeat failures are non-fatal
+        pass
 
 
-def poll_for_job(node_id: str, orchestrator: str) -> dict | None:
-    """Poll the orchestrator for a job."""
+def poll_for_lb_job(node_id: str, orchestrator: str, tier: str) -> dict | None:
+    """
+    Poll the Load Balancer for a tier-specific job.
+    Scout → /api/lb/jobs/claim/scout
+    Refiner → /api/lb/jobs/claim/refiner
+    """
+    endpoint = f"{orchestrator}/api/lb/jobs/claim/{tier}"
     try:
-        resp = requests.post(
-            f"{orchestrator}/api/jobs/claim",
-            json={"node_id": node_id},
-            timeout=10,
-        )
+        resp = requests.post(endpoint, json={"node_id": node_id}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
         if data.get("success") and data.get("job"):
             return data["job"]
         return None
     except Exception as e:
-        logger.warning(f"Job poll failed: {e}")
+        logger.warning(f"Job poll failed ({tier}): {e}")
         return None
 
 
-def submit_traces(node_id: str, job_id: str, traces: list, orchestrator: str) -> bool:
-    """Submit generated traces to the orchestrator."""
+def _submit_traces_to_vault(node_id: str, job_id: str, traces: list, orchestrator: str) -> bool:
+    """Submit Gold Standard traces to the main HITL vault."""
     try:
         resp = requests.post(
             f"{orchestrator}/api/traces/submit",
@@ -199,21 +457,27 @@ def submit_traces(node_id: str, job_id: str, traces: list, orchestrator: str) ->
         resp.raise_for_status()
         result = resp.json()
         logger.info(
-            f"Submitted {len(traces)} traces — "
-            f"{result.get('accepted', 0)} accepted, {result.get('rejected', 0)} rejected"
+            f"Vault submission: {result.get('accepted', 0)} accepted, "
+            f"{result.get('rejected', 0)} rejected"
         )
         return True
     except Exception as e:
-        logger.error(f"Trace submission failed: {e}")
+        logger.error(f"Vault submission failed: {e}")
         return False
 
 
-def mark_job_complete(node_id: str, job_id: str, traces_submitted: int, orchestrator: str):
-    """Notify the orchestrator that the job is done."""
+def _mark_lb_job_complete(node_id: str, job_id: str, tier: str, count: int, orchestrator: str):
+    """Notify the Load Balancer that a job is complete."""
     try:
         requests.post(
-            f"{orchestrator}/api/jobs/complete",
-            json={"node_id": node_id, "job_id": job_id, "traces_submitted": traces_submitted},
+            f"{orchestrator}/api/lb/jobs/complete",
+            json={
+                "node_id": node_id,
+                "job_id": job_id,
+                "tier": tier,
+                "items_produced": count,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            },
             timeout=10,
         )
     except Exception as e:
@@ -224,58 +488,6 @@ def mark_job_complete(node_id: str, job_id: str, traces_submitted: int, orchestr
 # Core Worker Loop
 # ---------------------------------------------------------------------------
 
-def process_job(job: dict, node_id: str, orchestrator: str, ollama_url: str, model: str):
-    """Process a single job: generate traces via Ollama and submit them."""
-    job_id = job["job_id"]
-    traces_requested = job.get("traces_requested", 5)
-    prompt = job.get("prompt_template", "")
-    niche = job.get("niche", "Unknown")
-
-    logger.info(f"Processing job {job_id} — {niche} — {traces_requested} traces requested")
-
-    generated_traces = []
-
-    for i in range(traces_requested):
-        logger.info(f"  Generating trace {i+1}/{traces_requested} via Ollama {model}...")
-        try:
-            # Add variation to each trace prompt
-            varied_prompt = (
-                f"{prompt}\n\n"
-                f"Generate trace #{i+1}. "
-                f"Vary the clinical details slightly (e.g., patient age, specific findings, "
-                f"documentation completeness) while keeping the core billing scenario the same. "
-                f"Respond ONLY with valid JSON in this exact format:\n"
-                f'{{"chain_of_thought": ["step 1...", "step 2...", ...], '
-                f'"final_decision": "...", "financial_impact": 0.00}}'
-            )
-
-            raw = call_ollama(varied_prompt, model, ollama_url)
-            trace = parse_ollama_response(raw, job)
-
-            # Validate minimum quality
-            if len(trace["chain_of_thought"]) < 2 or not trace["final_decision"]:
-                logger.warning(f"  Trace {i+1} failed quality check — skipping")
-                continue
-
-            generated_traces.append(trace)
-            logger.info(f"  Trace {i+1} generated — {len(trace['chain_of_thought'])} CoT steps")
-
-        except RuntimeError as e:
-            logger.error(f"  Trace {i+1} failed: {e}")
-            # If Ollama is down, abort the job
-            if "Cannot connect" in str(e):
-                logger.error("Ollama is not running. Aborting job.")
-                break
-        except Exception as e:
-            logger.error(f"  Trace {i+1} unexpected error: {e}")
-
-    if generated_traces:
-        submit_traces(node_id, job_id, generated_traces, orchestrator)
-
-    mark_job_complete(node_id, job_id, len(generated_traces), orchestrator)
-    logger.info(f"Job {job_id} complete — {len(generated_traces)}/{traces_requested} traces generated")
-
-
 def heartbeat_loop(node_id: str, orchestrator: str):
     """Background thread that sends heartbeats every 60 seconds."""
     while True:
@@ -283,14 +495,21 @@ def heartbeat_loop(node_id: str, orchestrator: str):
         send_heartbeat(node_id, orchestrator)
 
 
-def main_loop(node_id: str, orchestrator: str, ollama_url: str, model: str):
-    """Main polling loop — checks for jobs every 30 seconds."""
-    logger.info(f"Worker {node_id} started. Polling {orchestrator} every {POLL_INTERVAL}s")
-    logger.info(f"Ollama endpoint: {ollama_url} | Model: {model}")
+def main_loop(node_id: str, orchestrator: str, ollama_url: str, model: str, tier: str):
+    """
+    Main polling loop.
+    - Registers with orchestrator (LB-aware)
+    - Polls the correct tier queue every POLL_INTERVAL seconds
+    - Routes to process_scout_job or process_refiner_job based on tier
+    """
+    logger.info("=" * 60)
+    logger.info(f"Logic Refinery Worker v3.0 — {node_id}")
+    logger.info(f"Tier: {tier.upper()} | Model: {model} | Orchestrator: {orchestrator}")
+    logger.info("=" * 60)
 
     # Register with orchestrator
     for attempt in range(MAX_RETRIES):
-        if register(node_id, orchestrator, model):
+        if register_with_lb(node_id, orchestrator, model, tier):
             break
         logger.warning(f"Registration attempt {attempt+1}/{MAX_RETRIES} failed. Retrying in 10s...")
         time.sleep(10)
@@ -306,15 +525,19 @@ def main_loop(node_id: str, orchestrator: str, ollama_url: str, model: str):
         name="heartbeat",
     )
     hb_thread.start()
+    logger.info(f"Heartbeat thread started. Polling every {POLL_INTERVAL}s...")
 
     # Main poll loop
     while True:
         try:
-            job = poll_for_job(node_id, orchestrator)
+            job = poll_for_lb_job(node_id, orchestrator, tier)
             if job:
-                process_job(job, node_id, orchestrator, ollama_url, model)
+                if tier == "scout":
+                    process_scout_job(job, node_id, orchestrator, ollama_url, model)
+                else:
+                    process_refiner_job(job, node_id, orchestrator, ollama_url, model)
             else:
-                logger.debug(f"No jobs available. Sleeping {POLL_INTERVAL}s...")
+                logger.debug(f"No {tier} jobs available. Sleeping {POLL_INTERVAL}s...")
         except KeyboardInterrupt:
             logger.info("Worker stopped by user.")
             break
@@ -330,53 +553,56 @@ def main_loop(node_id: str, orchestrator: str, ollama_url: str, model: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Logic Refinery Worker Node Client",
+        description="Logic Refinery v3.0 — Worker Node Client (Scout & Refiner)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Node 1 connecting to orchestrator at 192.168.1.100
+  # Auto-detect tier (recommended — orchestrator classifies your hardware):
   python3 worker_client.py --node-id node_01 --orchestrator http://192.168.1.100:5001
 
-  # Node 3 with custom Ollama port
-  python3 worker_client.py --node-id node_03 --orchestrator http://192.168.1.100:5001 --ollama http://localhost:11434
+  # Force Scout tier (i5 nodes):
+  python3 worker_client.py --node-id node_01 --orchestrator http://192.168.1.100:5001 --tier scout
 
-  # Use a different model (e.g., for Ryzen validator nodes)
-  python3 worker_client.py --node-id ryzen_01 --orchestrator http://192.168.1.100:5001 --model llama3.1:8b
+  # Force Refiner tier (Ryzen nodes):
+  python3 worker_client.py --node-id ryzen_01 --orchestrator http://192.168.1.100:5001 --tier refiner --model mistral-nemo
+
+  # Refiner with Llama 3.1 8B:
+  python3 worker_client.py --node-id ryzen_02 --orchestrator http://192.168.1.100:5001 --tier refiner --model llama3.1:8b
         """,
     )
-    parser.add_argument(
-        "--node-id",
-        required=True,
-        help="Unique ID for this node (e.g., node_01, node_02, ..., node_07)",
-    )
-    parser.add_argument(
-        "--orchestrator",
-        default=DEFAULT_ORCHESTRATOR,
-        help=f"Orchestrator URL (default: {DEFAULT_ORCHESTRATOR})",
-    )
-    parser.add_argument(
-        "--ollama",
-        default=DEFAULT_OLLAMA,
-        help=f"Ollama API URL (default: {DEFAULT_OLLAMA})",
-    )
-    parser.add_argument(
-        "--model",
-        default=DEFAULT_MODEL,
-        help=f"Ollama model name (default: {DEFAULT_MODEL})",
-    )
-    parser.add_argument(
-        "--poll-interval",
-        type=int,
-        default=POLL_INTERVAL,
-        help=f"Seconds between job polls (default: {POLL_INTERVAL})",
-    )
+    parser.add_argument("--node-id", required=True,
+                        help="Unique node ID (e.g., node_01 through node_07, ryzen_01)")
+    parser.add_argument("--orchestrator", default=DEFAULT_ORCHESTRATOR,
+                        help=f"Orchestrator URL (default: {DEFAULT_ORCHESTRATOR})")
+    parser.add_argument("--ollama", default=DEFAULT_OLLAMA,
+                        help=f"Ollama API URL (default: {DEFAULT_OLLAMA})")
+    parser.add_argument("--model", default=None,
+                        help="Ollama model name (auto-selected if not set: phi4-mini for scout, mistral-nemo for refiner)")
+    parser.add_argument("--tier", choices=["scout", "refiner", "auto"], default="auto",
+                        help="Node tier: scout (Claim Map parsing), refiner (Gold Standard reasoning), auto (detect from hardware)")
+    parser.add_argument("--poll-interval", type=int, default=POLL_INTERVAL,
+                        help=f"Seconds between job polls (default: {POLL_INTERVAL})")
 
     args = parser.parse_args()
     POLL_INTERVAL = args.poll_interval
+
+    # Resolve tier
+    resolved_tier = args.tier
+    if resolved_tier == "auto":
+        # Need a model to probe with — use a default for detection
+        probe_model = args.model or DEFAULT_SCOUT_MODEL
+        resolved_tier = detect_tier_from_orchestrator(args.node_id, args.orchestrator, probe_model)
+
+    # Resolve model based on tier if not explicitly set
+    resolved_model = args.model
+    if not resolved_model:
+        resolved_model = DEFAULT_REFINER_MODEL if resolved_tier == "refiner" else DEFAULT_SCOUT_MODEL
+        logger.info(f"Model auto-selected for {resolved_tier.upper()} tier: {resolved_model}")
 
     main_loop(
         node_id=args.node_id,
         orchestrator=args.orchestrator,
         ollama_url=args.ollama,
-        model=args.model,
+        model=resolved_model,
+        tier=resolved_tier,
     )

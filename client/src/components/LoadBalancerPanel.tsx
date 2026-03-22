@@ -1,20 +1,28 @@
-/**
+/*
  * LoadBalancerPanel.tsx — Scout & Refiner Load Balancer Dashboard
- * Logic Refinery v3.0
+ * Logic Refinery v3.1
  *
  * Design: Forensic Terminal — dark slate, amber/green accent, monospace data
- * Layout: Two-column split (Scout queue left, Refiner queue right) on desktop,
- *         stacked on mobile. Pipeline flow diagram at top.
+ * New in v3.1:
+ *   - ThroughputChart: Recharts line graph of Scout/Refiner completions (24h)
+ *   - ClaimMapDrawer: slide-up inspector showing clinical anchor, transactional
+ *     layer, NCCI forensic link, and raw JSON for any queue row
+ *   - Clickable QueueRow: tap any job to open its Claim Map in the drawer
  */
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Cpu, Zap, ArrowRight, RefreshCw, Shield, AlertTriangle,
-  CheckCircle2, Clock, Activity, ChevronDown, ChevronUp,
+  CheckCircle2, Activity, ChevronDown, ChevronUp,
   Database, FlaskConical, Layers, TrendingUp,
+  X, FileJson, ExternalLink, BarChart2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 const API = "http://localhost:5001";
 
@@ -55,6 +63,36 @@ interface QueueJob {
   oig_priority: boolean;
   assigned_to: string | null;
   created_at: string;
+}
+
+interface ThroughputData {
+  hours: string[];
+  scout: number[];
+  refiner: number[];
+  total_scout: number;
+  total_refiner: number;
+}
+
+interface ClaimMap {
+  claim_map_id: string;
+  niche: string;
+  source_bill_id: string;
+  node_id: string;
+  icd10_primary: string;
+  cpt_codes: string[];
+  ncci_citation: string;
+  oig_priority: boolean;
+  financial_impact_estimate: number;
+  audit_summary: {
+    overall_audit_risk: string;
+    ncci_edits_triggered: number;
+    ready_for_refiner: boolean;
+    flags: string[];
+  };
+  clinical_anchor: { diagnosis: string; icd10: string; clinical_context: string };
+  transactional_layer: { primary_cpt: string; secondary_cpts: string[]; modifiers: string[] };
+  forensic_link: { ncci_edit_type: string; bundling_rule: string; financial_exposure: number };
+  generated_at: string;
 }
 
 interface TierDetectResult {
@@ -107,46 +145,11 @@ function timeAgo(iso: string) {
 
 function PipelineFlow({ stats }: { stats: LBStats | null }) {
   const stages = [
-    {
-      id: "gcp",
-      label: "GCP ML",
-      sublabel: "Raw Bills",
-      icon: Database,
-      color: "border-slate-500 text-slate-400",
-      count: null,
-    },
-    {
-      id: "scout",
-      label: "i5-Scout",
-      sublabel: "Claim Map Parse",
-      icon: Cpu,
-      color: "border-amber-500 text-amber-400",
-      count: stats ? stats.scout_queue.queued + stats.scout_queue.in_progress : null,
-    },
-    {
-      id: "claimmap",
-      label: "Claim Maps",
-      sublabel: "NCCI Mapped",
-      icon: Layers,
-      color: "border-blue-500 text-blue-400",
-      count: stats ? stats.pipeline_throughput.claim_maps_ready : null,
-    },
-    {
-      id: "refiner",
-      label: "Ryzen-Refiner",
-      sublabel: "Gold Reasoning",
-      icon: Zap,
-      color: "border-emerald-500 text-emerald-400",
-      count: stats ? stats.refiner_queue.queued + stats.refiner_queue.in_progress : null,
-    },
-    {
-      id: "hitl",
-      label: "HITL",
-      sublabel: "Human Verify",
-      icon: Shield,
-      color: "border-purple-500 text-purple-400",
-      count: stats ? stats.pipeline_throughput.traces_ready_for_hitl : null,
-    },
+    { id: "gcp", label: "GCP ML", sublabel: "Raw Bills", icon: Database, color: "border-slate-500 text-slate-400", count: null },
+    { id: "scout", label: "i5-Scout", sublabel: "Claim Map Parse", icon: Cpu, color: "border-amber-500 text-amber-400", count: stats ? stats.scout_queue.queued + stats.scout_queue.in_progress : null },
+    { id: "claimmap", label: "Claim Maps", sublabel: "NCCI Mapped", icon: Layers, color: "border-blue-500 text-blue-400", count: stats ? stats.pipeline_throughput.claim_maps_ready : null },
+    { id: "refiner", label: "Ryzen-Refiner", sublabel: "Gold Reasoning", icon: Zap, color: "border-emerald-500 text-emerald-400", count: stats ? stats.refiner_queue.queued + stats.refiner_queue.in_progress : null },
+    { id: "hitl", label: "HITL", sublabel: "Human Verify", icon: Shield, color: "border-purple-500 text-purple-400", count: stats ? stats.pipeline_throughput.traces_ready_for_hitl : null },
   ];
 
   return (
@@ -158,9 +161,7 @@ function PipelineFlow({ stats }: { stats: LBStats | null }) {
             <span className="text-[10px] font-mono font-bold">{stage.label}</span>
             <span className="text-[9px] text-slate-500">{stage.sublabel}</span>
             {stage.count !== null && (
-              <span className="text-[10px] font-mono font-bold tabular-nums">
-                {stage.count}
-              </span>
+              <span className="text-[10px] font-mono font-bold tabular-nums">{stage.count}</span>
             )}
           </div>
           {i < stages.length - 1 && (
@@ -174,9 +175,7 @@ function PipelineFlow({ stats }: { stats: LBStats | null }) {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({
-  label, value, sub, color = "text-white",
-}: { label: string; value: string | number; sub?: string; color?: string }) {
+function StatCard({ label, value, sub, color = "text-white" }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
     <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-3">
       <div className="text-[10px] text-slate-500 font-mono uppercase tracking-wider mb-1">{label}</div>
@@ -186,14 +185,271 @@ function StatCard({
   );
 }
 
-// ─── Queue Row ────────────────────────────────────────────────────────────────
+// ─── Claim Map Inspector Drawer ───────────────────────────────────────────────
 
-function QueueRow({ job, tier }: { job: QueueJob; tier: "scout" | "refiner" }) {
+function ClaimMapDrawer({ map, onClose }: { map: ClaimMap; onClose: () => void }) {
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ y: 60, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 60, opacity: 0 }}
+          transition={{ type: "spring", damping: 28, stiffness: 300 }}
+          className="w-full md:max-w-2xl max-h-[85vh] overflow-y-auto bg-slate-900 border border-slate-700 rounded-t-2xl md:rounded-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Drawer header */}
+          <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 bg-slate-900 border-b border-slate-700">
+            <div className="flex items-center gap-3">
+              <FileJson className="w-5 h-5 text-blue-400" />
+              <div>
+                <div className="text-sm font-mono font-bold text-slate-100">Claim Map Inspector</div>
+                <div className="text-[10px] text-slate-500 font-mono">{map.claim_map_id}</div>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Summary row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-800/60 rounded-lg p-3">
+                <div className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mb-1">Niche</div>
+                <div className={`text-xs font-mono font-bold ${NICHE_COLORS[map.niche] || "text-slate-300"}`}>{map.niche.replace(/_/g, " ")}</div>
+              </div>
+              <div className="bg-slate-800/60 rounded-lg p-3">
+                <div className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mb-1">Exposure</div>
+                <div className="text-xs font-mono font-bold text-emerald-400">{fmt$(map.financial_impact_estimate)}</div>
+              </div>
+              <div className={`rounded-lg p-3 ${
+                map.audit_summary?.overall_audit_risk === "HIGH"
+                  ? "bg-red-500/10 border border-red-500/20"
+                  : map.audit_summary?.overall_audit_risk === "MEDIUM"
+                  ? "bg-amber-500/10 border border-amber-500/20"
+                  : "bg-emerald-500/10 border border-emerald-500/20"
+              }`}>
+                <div className="text-[9px] text-slate-500 font-mono uppercase tracking-wider mb-1">Audit Risk</div>
+                <div className={`text-xs font-mono font-bold ${
+                  map.audit_summary?.overall_audit_risk === "HIGH" ? "text-red-400"
+                  : map.audit_summary?.overall_audit_risk === "MEDIUM" ? "text-amber-400"
+                  : "text-emerald-400"
+                }`}>{map.audit_summary?.overall_audit_risk || "—"}</div>
+              </div>
+            </div>
+
+            {/* OIG + NCCI citation badges */}
+            {(map.oig_priority || map.ncci_citation) && (
+              <div className="flex flex-wrap gap-2">
+                {map.oig_priority && (
+                  <span className="flex items-center gap-1 text-[10px] bg-red-500/15 text-red-400 border border-red-500/25 rounded-full px-2.5 py-1 font-mono">
+                    <AlertTriangle className="w-3 h-3" /> OIG 2026 Priority
+                  </span>
+                )}
+                {map.ncci_citation && (
+                  <span className="text-[10px] bg-blue-500/15 text-blue-400 border border-blue-500/25 rounded-full px-2.5 py-1 font-mono">
+                    {map.ncci_citation}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Clinical Anchor */}
+            <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-800/40 border-b border-slate-700/30">
+                <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider">Clinical Anchor</span>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">ICD-10</span>
+                  <span className="text-xs font-mono text-amber-400 font-bold">{map.icd10_primary}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">Diagnosis</span>
+                  <span className="text-xs font-mono text-slate-300">{map.clinical_anchor?.diagnosis || map.icd10_primary}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">Context</span>
+                  <span className="text-xs font-mono text-slate-400 leading-relaxed">{map.clinical_anchor?.clinical_context || "—"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Transactional Layer */}
+            <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-800/40 border-b border-slate-700/30">
+                <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider">Transactional Layer</span>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">Primary CPT</span>
+                  <span className="text-xs font-mono text-white font-bold">{map.transactional_layer?.primary_cpt || map.cpt_codes?.[0] || "—"}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">All CPTs</span>
+                  <div className="flex flex-wrap gap-1">
+                    {(map.cpt_codes || []).map((c) => (
+                      <span key={c} className="text-[10px] bg-slate-700 text-slate-200 rounded px-1.5 py-0.5 font-mono">{c}</span>
+                    ))}
+                  </div>
+                </div>
+                {(map.transactional_layer?.modifiers?.length ?? 0) > 0 && (
+                  <div className="flex items-start gap-3">
+                    <span className="text-[9px] text-slate-500 font-mono w-16 flex-shrink-0 pt-0.5">Modifiers</span>
+                    <div className="flex flex-wrap gap-1">
+                      {map.transactional_layer.modifiers.map((m) => (
+                        <span key={m} className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded px-1.5 py-0.5 font-mono">{m}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Forensic Link */}
+            <div className="border border-red-500/20 rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-red-500/5 border-b border-red-500/20">
+                <span className="text-[10px] font-mono font-bold text-red-400 uppercase tracking-wider">Forensic Link — NCCI Edit</span>
+              </div>
+              <div className="p-4 space-y-2">
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-20 flex-shrink-0 pt-0.5">Edit Type</span>
+                  <span className="text-xs font-mono text-red-400 font-bold">{map.forensic_link?.ncci_edit_type || "—"}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-20 flex-shrink-0 pt-0.5">Bundling Rule</span>
+                  <span className="text-xs font-mono text-slate-300 leading-relaxed">{map.forensic_link?.bundling_rule || "—"}</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] text-slate-500 font-mono w-20 flex-shrink-0 pt-0.5">Exposure</span>
+                  <span className="text-xs font-mono text-emerald-400 font-bold">{fmt$(map.forensic_link?.financial_exposure || 0)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Audit Flags */}
+            {(map.audit_summary?.flags?.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">Audit Flags</div>
+                <div className="space-y-1">
+                  {map.audit_summary.flags.map((flag, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px] font-mono text-slate-300">
+                      <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0 mt-0.5" />
+                      {flag}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Raw JSON toggle */}
+            <details className="group">
+              <summary className="flex items-center gap-2 cursor-pointer text-[10px] font-mono text-slate-500 hover:text-slate-300 transition-colors list-none">
+                <ExternalLink className="w-3 h-3" />
+                View raw JSON
+              </summary>
+              <pre className="mt-2 p-3 bg-slate-950 border border-slate-700/50 rounded-lg text-[9px] font-mono text-slate-400 overflow-x-auto max-h-48 overflow-y-auto">
+                {JSON.stringify(map, null, 2)}
+              </pre>
+            </details>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─── Throughput Chart ─────────────────────────────────────────────────────────
+
+function ThroughputChart({ data }: { data: ThroughputData | null }) {
+  if (!data) {
+    return (
+      <div className="border border-slate-700/50 rounded-xl p-4 flex items-center justify-center h-40 text-slate-600 font-mono text-xs">
+        Loading throughput data...
+      </div>
+    );
+  }
+
+  const chartData = data.hours.map((h, i) => ({
+    hour: h,
+    Scout: data.scout[i] ?? 0,
+    Refiner: data.refiner[i] ?? 0,
+  }));
+
+  return (
+    <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900/60 border-b border-slate-700/30">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="w-4 h-4 text-blue-400" />
+          <span className="text-sm font-mono font-bold text-slate-200">Pipeline Throughput</span>
+          <span className="text-[10px] text-slate-500 font-mono ml-1">— last 24 hours</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="text-[10px] font-mono text-slate-400">Scout: {data.total_scout}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-[10px] font-mono text-slate-400">Refiner: {data.total_refiner}</span>
+          </div>
+        </div>
+      </div>
+      <div className="p-4 bg-slate-950/40">
+        <ResponsiveContainer width="100%" height={160}>
+          <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,116,139,0.15)" />
+            <XAxis
+              dataKey="hour"
+              tick={{ fontSize: 9, fontFamily: "JetBrains Mono, monospace", fill: "#64748b" }}
+              tickLine={false}
+              axisLine={false}
+              interval={3}
+            />
+            <YAxis
+              tick={{ fontSize: 9, fontFamily: "JetBrains Mono, monospace", fill: "#64748b" }}
+              tickLine={false}
+              axisLine={false}
+              allowDecimals={false}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "#0f172a",
+                border: "1px solid rgba(100,116,139,0.3)",
+                borderRadius: "8px",
+                fontFamily: "JetBrains Mono, monospace",
+                fontSize: "11px",
+              }}
+              labelStyle={{ color: "#94a3b8" }}
+            />
+            <Line type="monotone" dataKey="Scout" stroke="#f59e0b" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: "#f59e0b" }} />
+            <Line type="monotone" dataKey="Refiner" stroke="#10b981" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: "#10b981" }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Queue Row (clickable for Claim Map inspection) ───────────────────────────
+
+function QueueRow({ job, tier, onInspect }: { job: QueueJob; tier: "scout" | "refiner"; onInspect?: (jobId: string) => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, x: tier === "scout" ? -10 : 10 }}
       animate={{ opacity: 1, x: 0 }}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700/30 hover:border-slate-600/50 transition-colors"
+      onClick={() => onInspect?.(job.job_id)}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/40 border border-slate-700/30 transition-colors ${
+        onInspect ? "hover:border-blue-500/40 hover:bg-slate-800/40 cursor-pointer" : ""
+      }`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -218,6 +474,9 @@ function QueueRow({ job, tier }: { job: QueueJob; tier: "scout" | "refiner" }) {
           {job.status}
         </div>
       </div>
+      {onInspect && (
+        <FileJson className="w-3 h-3 text-slate-600 flex-shrink-0" />
+      )}
     </motion.div>
   );
 }
@@ -330,23 +589,17 @@ function TierDetector() {
                     <span className={`text-sm font-mono font-bold uppercase ${result.tier === "refiner" ? "text-emerald-400" : "text-amber-400"}`}>
                       {result.tier === "refiner" ? "Ryzen-Refiner" : "i5-Scout"}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      confidence: {result.confidence}
-                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">confidence: {result.confidence}</span>
                     {result.capabilities?.bittensor_eligible && (
                       <span className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded px-1.5 py-0.5 font-mono">
                         Bittensor Eligible
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-slate-400 font-mono leading-relaxed">
-                    {result.reason}
-                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono leading-relaxed">{result.reason}</div>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {result.capabilities?.task_types?.map((t) => (
-                      <span key={t} className="text-[9px] bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono">
-                        {t}
-                      </span>
+                      <span key={t} className="text-[9px] bg-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono">{t}</span>
                     ))}
                   </div>
                 </motion.div>
@@ -365,6 +618,8 @@ export default function LoadBalancerPanel() {
   const [stats, setStats] = useState<LBStats | null>(null);
   const [scoutJobs, setScoutJobs] = useState<QueueJob[]>([]);
   const [refinerJobs, setRefinerJobs] = useState<QueueJob[]>([]);
+  const [throughput, setThroughput] = useState<ThroughputData | null>(null);
+  const [inspectMap, setInspectMap] = useState<ClaimMap | null>(null);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -372,23 +627,48 @@ export default function LoadBalancerPanel() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, scoutRes, refinerRes] = await Promise.all([
+      const [statsRes, scoutRes, refinerRes, throughputRes] = await Promise.all([
         fetch(`${API}/api/lb/stats`),
         fetch(`${API}/api/lb/queue/scout?limit=15`),
         fetch(`${API}/api/lb/queue/refiner?limit=15`),
+        fetch(`${API}/api/lb/throughput?hours=24`),
       ]);
-      const [s, sq, rq] = await Promise.all([
-        statsRes.json(), scoutRes.json(), refinerRes.json(),
+      const [s, sq, rq, tp] = await Promise.all([
+        statsRes.json(), scoutRes.json(), refinerRes.json(), throughputRes.json(),
       ]);
       setStats(s);
       setScoutJobs(sq.queue || []);
       setRefinerJobs(rq.queue || []);
+      setThroughput(tp);
     } catch {
       toast.error("Cannot reach backend — is Flask running on port 5001?");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const handleInspect = useCallback(async (jobId: string) => {
+    try {
+      const res = await fetch(`${API}/api/lb/claim_maps?limit=50`);
+      const data = await res.json();
+      const maps: ClaimMap[] = data.claim_maps || [];
+      const match = maps.find((m) => m.claim_map_id?.includes(jobId.slice(-6))) || maps[0];
+      if (match) {
+        setInspectMap(match);
+      } else {
+        const job = [...scoutJobs, ...refinerJobs].find((j) => j.job_id === jobId);
+        const genRes = await fetch(`${API}/api/lb/claim_maps/generate_sample`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ niche: job?.niche, node_id: "inspector_demo" }),
+        });
+        const genData = await genRes.json();
+        if (genData.claim_map) setInspectMap(genData.claim_map);
+      }
+    } catch {
+      toast.error("Could not load Claim Map");
+    }
+  }, [scoutJobs, refinerJobs]);
 
   useEffect(() => {
     refresh();
@@ -423,6 +703,7 @@ export default function LoadBalancerPanel() {
       toast.success(
         `Claim Map generated — ${cm.niche} · ${fmt$(cm.financial_impact_estimate)} exposure · ${cm.audit_summary.ncci_edits_triggered} NCCI edit(s)`
       );
+      setInspectMap(cm);
       refresh();
     } catch {
       toast.error("Generation failed");
@@ -432,6 +713,7 @@ export default function LoadBalancerPanel() {
   };
 
   return (
+    <>
     <div className="flex flex-col gap-4 p-4 pb-24 md:pb-4">
 
       {/* Header */}
@@ -472,31 +754,14 @@ export default function LoadBalancerPanel() {
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label="Scout Queue"
-          value={stats?.scout_queue.queued ?? "—"}
-          sub={`${stats?.scout_queue.in_progress ?? 0} in progress`}
-          color="text-amber-400"
-        />
-        <StatCard
-          label="Refiner Queue"
-          value={stats?.refiner_queue.queued ?? "—"}
-          sub={`${stats?.refiner_queue.in_progress ?? 0} in progress`}
-          color="text-emerald-400"
-        />
-        <StatCard
-          label="Claim Maps Ready"
-          value={stats?.pipeline_throughput.claim_maps_ready ?? "—"}
-          sub="awaiting refiner"
-          color="text-blue-400"
-        />
-        <StatCard
-          label="Traces → HITL"
-          value={stats?.pipeline_throughput.traces_ready_for_hitl ?? "—"}
-          sub="awaiting human verify"
-          color="text-purple-400"
-        />
+        <StatCard label="Scout Queue" value={stats?.scout_queue.queued ?? "—"} sub={`${stats?.scout_queue.in_progress ?? 0} in progress`} color="text-amber-400" />
+        <StatCard label="Refiner Queue" value={stats?.refiner_queue.queued ?? "—"} sub={`${stats?.refiner_queue.in_progress ?? 0} in progress`} color="text-emerald-400" />
+        <StatCard label="Claim Maps Ready" value={stats?.pipeline_throughput.claim_maps_ready ?? "—"} sub="awaiting refiner" color="text-blue-400" />
+        <StatCard label="Traces → HITL" value={stats?.pipeline_throughput.traces_ready_for_hitl ?? "—"} sub="awaiting human verify" color="text-purple-400" />
       </div>
+
+      {/* Throughput Chart */}
+      <ThroughputChart data={throughput} />
 
       {/* Tier Detector */}
       <TierDetector />
@@ -516,16 +781,13 @@ export default function LoadBalancerPanel() {
           </div>
           <div className="p-3 flex flex-col gap-2 max-h-80 overflow-y-auto">
             {scoutJobs.length === 0 ? (
-              <div className="text-center py-8 text-slate-600 font-mono text-xs">
-                No Scout jobs queued
-              </div>
+              <div className="text-center py-8 text-slate-600 font-mono text-xs">No Scout jobs queued</div>
             ) : (
               scoutJobs.map((job) => (
-                <QueueRow key={job.job_id} job={job} tier="scout" />
+                <QueueRow key={job.job_id} job={job} tier="scout" onInspect={handleInspect} />
               ))
             )}
           </div>
-          {/* Scout stats footer */}
           <div className="flex items-center gap-4 px-4 py-2 bg-slate-900/40 border-t border-slate-700/30">
             {[
               { label: "Done", value: stats?.scout_queue.completed ?? 0, color: "text-emerald-400" },
@@ -552,16 +814,13 @@ export default function LoadBalancerPanel() {
           </div>
           <div className="p-3 flex flex-col gap-2 max-h-80 overflow-y-auto">
             {refinerJobs.length === 0 ? (
-              <div className="text-center py-8 text-slate-600 font-mono text-xs">
-                No Refiner jobs queued
-              </div>
+              <div className="text-center py-8 text-slate-600 font-mono text-xs">No Refiner jobs queued</div>
             ) : (
               refinerJobs.map((job) => (
-                <QueueRow key={job.job_id} job={job} tier="refiner" />
+                <QueueRow key={job.job_id} job={job} tier="refiner" onInspect={handleInspect} />
               ))
             )}
           </div>
-          {/* Refiner stats footer */}
           <div className="flex items-center gap-4 px-4 py-2 bg-slate-900/40 border-t border-slate-700/30">
             {[
               { label: "Done", value: stats?.refiner_queue.completed ?? 0, color: "text-emerald-400" },
@@ -635,7 +894,7 @@ export default function LoadBalancerPanel() {
 {`python3 worker_client.py \\
   --node-id node_01 \\
   --orchestrator http://YOUR_IP:5001 \\
-  --model phi4-mini`}
+  --tier scout`}
               </pre>
             </div>
             <div>
@@ -646,12 +905,12 @@ export default function LoadBalancerPanel() {
 {`python3 worker_client.py \\
   --node-id ryzen_01 \\
   --orchestrator http://YOUR_IP:5001 \\
-  --model mistral-nemo`}
+  --tier refiner --model mistral-nemo`}
               </pre>
             </div>
           </div>
           <p className="text-[10px] text-slate-500 font-mono">
-            The Load Balancer auto-detects tier from your hardware profile on first registration.
+            Use <code className="text-amber-400">--tier auto</code> to let the orchestrator classify your hardware automatically.
             Scouts receive <span className="text-amber-400">claim_map_parse</span> jobs.
             Refiners receive <span className="text-emerald-400">gold_standard_reason</span> jobs.
           </p>
@@ -659,5 +918,10 @@ export default function LoadBalancerPanel() {
       </div>
 
     </div>
+      {/* Claim Map Inspector Drawer */}
+      {inspectMap && (
+        <ClaimMapDrawer map={inspectMap as ClaimMap} onClose={() => setInspectMap(null)} />
+      )}
+    </>
   );
 }

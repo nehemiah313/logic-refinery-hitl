@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, jsonify, request, Response, stream_with_context
 from flask_cors import CORS
+import orchestrator as orch
 
 app = Flask(__name__)
 CORS(app, origins=["*"])
@@ -575,5 +576,199 @@ def get_niches():
     return jsonify({"niches": sorted(niches)})
 
 
+# ---------------------------------------------------------------------------
+# Worker Node API — called by worker_client.py running on each i5 node
+# ---------------------------------------------------------------------------
+
+@app.route("/api/nodes/register", methods=["POST"])
+def node_register():
+    """Worker node registers itself with the orchestrator."""
+    data = request.get_json() or {}
+    node_id = data.get("node_id")
+    ip = data.get("ip", request.remote_addr)
+    model = data.get("model", "phi4-mini")
+    if not node_id:
+        return jsonify({"error": "node_id required"}), 400
+    node = orch.register_node(node_id, ip, model)
+    return jsonify({"success": True, "node": node})
+
+
+@app.route("/api/nodes/heartbeat", methods=["POST"])
+def node_heartbeat():
+    """Worker node sends a heartbeat to stay marked as online."""
+    data = request.get_json() or {}
+    node_id = data.get("node_id")
+    if not node_id:
+        return jsonify({"error": "node_id required"}), 400
+    node = orch.heartbeat(node_id)
+    if not node:
+        # Auto-register if not known
+        node = orch.register_node(node_id, request.remote_addr)
+    return jsonify({"success": True, "node": node})
+
+
+@app.route("/api/nodes", methods=["GET"])
+def get_nodes():
+    """Return all registered nodes with online status."""
+    return jsonify({"nodes": orch.get_all_nodes()})
+
+
+@app.route("/api/jobs/claim", methods=["POST"])
+def claim_job():
+    """Worker node claims the next available job."""
+    data = request.get_json() or {}
+    node_id = data.get("node_id")
+    if not node_id:
+        return jsonify({"error": "node_id required"}), 400
+    job = orch.claim_job(node_id)
+    if job:
+        return jsonify({"success": True, "job": job})
+    return jsonify({"success": False, "job": None, "message": "No jobs available"})
+
+
+@app.route("/api/jobs/complete", methods=["POST"])
+def complete_job():
+    """Worker node marks a job as completed."""
+    data = request.get_json() or {}
+    job_id = data.get("job_id")
+    node_id = data.get("node_id")
+    traces_submitted = data.get("traces_submitted", 0)
+    if not job_id or not node_id:
+        return jsonify({"error": "job_id and node_id required"}), 400
+    success = orch.complete_job(job_id, node_id, traces_submitted)
+    return jsonify({"success": success})
+
+
+@app.route("/api/jobs/queue", methods=["GET"])
+def get_job_queue():
+    """Return job queue statistics and all jobs."""
+    stats = orch.get_queue_stats()
+    jobs = list(orch.JOB_QUEUE.values())
+    jobs.sort(key=lambda j: j.get("created_at", ""), reverse=True)
+    return jsonify({"stats": stats, "jobs": jobs[:50]})
+
+
+@app.route("/api/jobs/dispatch", methods=["POST"])
+def dispatch_jobs():
+    """Manually trigger a new job batch (also fires automatically every 2h)."""
+    data = request.get_json() or {}
+    traces_per_node = int(data.get("traces_per_node", 5))
+    jobs = orch.create_job_batch(traces_per_node=traces_per_node)
+    return jsonify({
+        "success": True,
+        "jobs_created": len(jobs),
+        "jobs": jobs,
+        "message": f"Dispatched {len(jobs)} jobs to worker nodes.",
+    })
+
+
+@app.route("/api/traces/submit", methods=["POST"])
+def submit_traces():
+    """
+    Worker nodes POST their generated traces here.
+    This is the Stage 1 → Stage 2 handoff.
+    Each trace goes through Stage 2 (augmentation) and Stage 3 (scoring)
+    before being queued for Stage 4 (HITL).
+    """
+    data = request.get_json() or {}
+    node_id = data.get("node_id", "unknown")
+    job_id = data.get("job_id", "")
+    raw_traces = data.get("traces", [])
+
+    if not raw_traces:
+        return jsonify({"error": "No traces provided"}), 400
+
+    accepted = 0
+    rejected = 0
+
+    for raw in raw_traces:
+        # Stage 2: Augment with GCP ML baseline metadata
+        niche = raw.get("niche", "Unknown")
+        cpt_codes = raw.get("cpt_codes", [])
+        cot = raw.get("chain_of_thought", [])
+        final_decision = raw.get("final_decision", "")
+        financial_impact = float(raw.get("financial_impact", 0.0))
+
+        # Stage 3: Score the trace (rule-based NCCI scoring)
+        score = _score_trace(cot, final_decision, cpt_codes)
+
+        # Only promote traces scoring >= 75 to HITL queue
+        if score < 75:
+            rejected += 1
+            continue
+
+        trace = {
+            "trace_id": f"trc_{uuid.uuid4().hex[:8]}",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "node": node_id,
+            "job_id": job_id,
+            "niche": niche,
+            "icd10": raw.get("icd10", ""),
+            "cpt_codes": cpt_codes,
+            "medical_narrative": raw.get("medical_narrative", ""),
+            "human_verified": False,
+            "auditor_id": None,
+            "human_decision": None,
+            "human_notes": None,
+            "verified_at": None,
+            "chain_of_thought": cot,
+            "final_decision": final_decision,
+            "financial_impact": financial_impact,
+            "validator_score": score,
+            "pipeline_stage": 4,
+            "status": "pending",
+        }
+        _vault.append(trace)
+        accepted += 1
+
+    _save_vault()
+
+    return jsonify({
+        "success": True,
+        "accepted": accepted,
+        "rejected": rejected,
+        "message": f"{accepted} traces accepted into HITL queue, {rejected} rejected (score < 75).",
+    })
+
+
+def _score_trace(cot: list, decision: str, cpt_codes: list) -> int:
+    """
+    Stage 3: Rule-based scoring of a trace.
+    In production, this would call Llama 3.1 8B on the Ryzen validator.
+    For the MVP, we use heuristic rules.
+    """
+    score = 50  # Base score
+
+    # Chain of thought quality
+    if len(cot) >= 4:
+        score += 15
+    elif len(cot) >= 2:
+        score += 8
+
+    # Decision specificity
+    if any(kw in decision.lower() for kw in ["deny", "allow", "ncci", "mue", "modifier"]):
+        score += 15
+
+    # Financial impact mentioned
+    if "$" in decision or "overbilling" in decision.lower():
+        score += 10
+
+    # CPT codes referenced in decision
+    for code in cpt_codes:
+        if code in decision:
+            score += 2
+
+    # NCCI/MUE keywords in chain of thought
+    cot_text = " ".join(cot).lower()
+    ncci_keywords = ["ncci", "mue", "column 2", "modifier 59", "unbundl", "edit", "cms"]
+    for kw in ncci_keywords:
+        if kw in cot_text:
+            score += 2
+
+    return min(score, 100)
+
+
 if __name__ == "__main__":
+    # Start the orchestrator scheduler (fires job batches every 2 hours)
+    orch.start_scheduler(interval_seconds=7200)
     app.run(host="0.0.0.0", port=5001, debug=False)

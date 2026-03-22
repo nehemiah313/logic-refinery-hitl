@@ -1,9 +1,10 @@
 /**
  * Logic Refinery HITL — Main Page
  * Design: Forensic Terminal / Cyberpunk Data Lab
- * Layout: Asymmetric sidebar (left 28%) + main validator area (right 72%)
+ * Layout: Asymmetric sidebar (left 28%) + tabbed main area (right 72%)
+ * Tabs: Validator (HITL card queue) | Cluster Monitor (7-node dashboard)
  */
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { api, type Trace, type Stats } from "@/lib/api";
 import { Sidebar } from "@/components/Sidebar";
@@ -11,7 +12,10 @@ import { ValidatorCard } from "@/components/ValidatorCard";
 import { PipelineDiagram } from "@/components/PipelineDiagram";
 import { StatsPanel } from "@/components/StatsPanel";
 import { EmptyQueue } from "@/components/EmptyQueue";
-import { Loader2 } from "lucide-react";
+import { NodeMonitor } from "@/components/NodeMonitor";
+import { Loader2, ShieldCheck, Network } from "lucide-react";
+
+type ActiveTab = "validator" | "cluster";
 
 export default function Home() {
   const [traces, setTraces] = useState<Trace[]>([]);
@@ -21,7 +25,7 @@ export default function Home() {
   const [swipeDirection, setSwipeDirection] = useState<"left" | "right" | null>(null);
   const [auditorId] = useState("aud_001");
   const [generating, setGenerating] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("validator");
 
   const loadData = useCallback(async () => {
     try {
@@ -32,7 +36,7 @@ export default function Home() {
       setTraces(tracesRes.traces);
       setStats(statsRes);
       setCurrentIndex(0);
-    } catch (err) {
+    } catch {
       toast.error("Failed to connect to Logic Refinery backend. Is Flask running on port 5001?");
     } finally {
       setLoading(false);
@@ -43,8 +47,9 @@ export default function Home() {
     loadData();
   }, [loadData]);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts (only active on validator tab)
   useEffect(() => {
+    if (activeTab !== "validator") return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowRight" || e.key === "a" || e.key === "A") handleDecision("approve");
@@ -53,7 +58,7 @@ export default function Home() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [currentIndex, traces]);
+  }, [currentIndex, traces, activeTab]);
 
   const handleDecision = useCallback(
     async (decision: "approve" | "deny" | "skip") => {
@@ -79,19 +84,15 @@ export default function Home() {
               style: { borderLeft: "3px solid oklch(0.65 0.22 25)" },
             });
           } else {
-            toast.info(`→ Skipped`, {
-              style: { borderLeft: "3px solid oklch(0.55 0.01 240)" },
-            });
+            toast.info(`→ Skipped`);
           }
 
-          // Advance to next trace
           setSwipeDirection(null);
           setCurrentIndex((prev) => prev + 1);
 
-          // Refresh stats
           const newStats = await api.getStats();
           setStats(newStats);
-        } catch (err) {
+        } catch {
           setSwipeDirection(null);
           toast.error("Failed to submit decision. Check backend connection.");
         }
@@ -132,68 +133,109 @@ export default function Home() {
         {/* Top Pipeline Diagram */}
         <PipelineDiagram stats={stats} />
 
-        {/* Validator Area */}
-        <div className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
-          {/* Scanlines overlay */}
-          <div className="absolute inset-0 scanlines pointer-events-none opacity-30" />
-
-          {loading ? (
-            <div className="flex flex-col items-center gap-4 text-muted-foreground">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              <p className="font-mono text-sm">Initializing Logic Refinery...</p>
-            </div>
-          ) : !currentTrace ? (
-            <EmptyQueue onGenerate={handleGenerate} generating={generating} />
-          ) : (
-            <div className="w-full max-w-2xl" ref={cardRef}>
-              {/* Queue indicator */}
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="font-mono text-xs text-muted-foreground">
-                  QUEUE: {queueRemaining} remaining
-                </span>
-                <div className="flex gap-1">
-                  {Array.from({ length: Math.min(queueRemaining, 8) }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-1 rounded-full transition-all ${
-                        i === 0
-                          ? "w-6 bg-primary"
-                          : "w-2 bg-border"
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <ValidatorCard
-                trace={currentTrace}
-                swipeDirection={swipeDirection}
-                onApprove={() => handleDecision("approve")}
-                onDeny={() => handleDecision("deny")}
-                onSkip={() => handleDecision("skip")}
-              />
-
-              {/* Keyboard hints */}
-              <div className="flex items-center justify-center gap-6 mt-4 text-muted-foreground">
-                <span className="font-mono text-xs flex items-center gap-1.5">
-                  <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">←</kbd>
-                  Deny
-                </span>
-                <span className="font-mono text-xs flex items-center gap-1.5">
-                  <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">↑</kbd>
-                  Skip
-                </span>
-                <span className="font-mono text-xs flex items-center gap-1.5">
-                  Approve
-                  <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">→</kbd>
-                </span>
-              </div>
-            </div>
-          )}
+        {/* Tab Bar */}
+        <div className="flex border-b border-border bg-card/30">
+          <button
+            onClick={() => setActiveTab("validator")}
+            className={`flex items-center gap-2 px-5 py-2.5 font-mono text-xs transition-all border-b-2 ${
+              activeTab === "validator"
+                ? "border-primary text-primary bg-primary/5"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            HITL Validator
+            {queueRemaining > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-bold text-xs">
+                {queueRemaining}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("cluster")}
+            className={`flex items-center gap-2 px-5 py-2.5 font-mono text-xs transition-all border-b-2 ${
+              activeTab === "cluster"
+                ? "border-primary text-primary bg-primary/5"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/30"
+            }`}
+          >
+            <Network className="w-3.5 h-3.5" />
+            Cluster Monitor
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-accent/50 text-muted-foreground font-bold text-xs">
+              7 nodes
+            </span>
+          </button>
         </div>
 
-        {/* Bottom Stats Bar */}
-        <StatsPanel stats={stats} />
+        {/* Tab Content */}
+        {activeTab === "validator" ? (
+          <>
+            {/* Validator Area */}
+            <div className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
+              {/* Scanlines overlay */}
+              <div className="absolute inset-0 scanlines pointer-events-none opacity-30" />
+
+              {loading ? (
+                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="font-mono text-sm">Initializing Logic Refinery...</p>
+                </div>
+              ) : !currentTrace ? (
+                <EmptyQueue onGenerate={handleGenerate} generating={generating} />
+              ) : (
+                <div className="w-full max-w-2xl">
+                  {/* Queue indicator */}
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <span className="font-mono text-xs text-muted-foreground">
+                      QUEUE: {queueRemaining} remaining
+                    </span>
+                    <div className="flex gap-1">
+                      {Array.from({ length: Math.min(queueRemaining, 8) }).map((_, i) => (
+                        <div
+                          key={i}
+                          className={`h-1 rounded-full transition-all ${
+                            i === 0 ? "w-6 bg-primary" : "w-2 bg-border"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <ValidatorCard
+                    trace={currentTrace}
+                    swipeDirection={swipeDirection}
+                    onApprove={() => handleDecision("approve")}
+                    onDeny={() => handleDecision("deny")}
+                    onSkip={() => handleDecision("skip")}
+                  />
+
+                  {/* Keyboard hints */}
+                  <div className="flex items-center justify-center gap-6 mt-4 text-muted-foreground">
+                    <span className="font-mono text-xs flex items-center gap-1.5">
+                      <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">←</kbd>
+                      Deny
+                    </span>
+                    <span className="font-mono text-xs flex items-center gap-1.5">
+                      <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">↑</kbd>
+                      Skip
+                    </span>
+                    <span className="font-mono text-xs flex items-center gap-1.5">
+                      Approve
+                      <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border text-[10px]">→</kbd>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Stats Bar */}
+            <StatsPanel stats={stats} />
+          </>
+        ) : (
+          <div className="flex-1 overflow-hidden">
+            <NodeMonitor />
+          </div>
+        )}
       </main>
     </div>
   );

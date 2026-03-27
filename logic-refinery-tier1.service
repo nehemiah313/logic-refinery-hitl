@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# logic-refinery-tier1.service
+# Logic Refinery HITL — Tier 1 Claims Mapper Daemon
+#
+# INSTALL (run on each i5 Scout node):
+#   sudo cp logic-refinery-tier1.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable logic-refinery-tier1.service
+#   sudo systemctl start logic-refinery-tier1.service
+#   sudo systemctl status logic-refinery-tier1.service
+#
+# LOGS:
+#   journalctl -u logic-refinery-tier1.service -f
+#
+# NOTE: Edit the User= and paths below to match each node's username.
+#   node_01 / Alpha1:  User=hotel_8
+#   golf:              User=golf_7
+#   india:             User=india_9
+#   charlie:           User=charlie_3
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Logic Refinery Tier 1 Claims Mapper
+Documentation=https://github.com/nehemiah313/logic-refinery-hitl
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# ── Change this to the node's username ──────────────────────────────────────
+User=hotel_8
+Group=hotel_8
+
+# ── Working directory and script path ───────────────────────────────────────
+WorkingDirectory=/home/hotel_8
+
+# ── Environment variables ────────────────────────────────────────────────────
+Environment="GCP_PROJECT=healthy-matter-453416-t3"
+Environment="GCP_DATASET=logic_refinery_prod"
+Environment="GCP_TABLE=cms_transparency_records"
+Environment="GCP_TOPIC=logic-mission-queue"
+Environment="GOOGLE_APPLICATION_CREDENTIALS=/home/hotel_8/logic-refinery-architect-key.json"
+Environment="NODE_ID=node_01"
+
+# ── Use the gcp-venv Python interpreter ─────────────────────────────────────
+ExecStart=/home/hotel_8/gcp-venv/bin/python3 /home/hotel_8/claim_mapper_pipeline.py \
+    --daemon \
+    --poll-interval 60 \
+    --batch-size 50 \
+    --chunk-size 1000
+
+# ── Restart policy ───────────────────────────────────────────────────────────
+Restart=always
+RestartSec=15
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# ── Output to journald ───────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=logic-refinery-tier1
+
+[Install]
+WantedBy=multi-user.target
